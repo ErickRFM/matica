@@ -27,6 +27,7 @@ object MaticaTypography {
 
     val displayLarge = style(36.sp, FontWeight.Bold, 44.sp)
     val displayMedium = style(30.sp, FontWeight.Bold, 38.sp)
+    val displaySmall = style(28.sp, FontWeight.Bold, 36.sp)
     val headlineLarge = style(26.sp, FontWeight.Bold, 34.sp)
     val headlineMedium = style(22.sp, FontWeight.SemiBold, 30.sp)
     val headlineSmall = style(19.sp, FontWeight.SemiBold, 26.sp)
@@ -42,7 +43,7 @@ object MaticaTypography {
 
     /** Todos los estilos de la escala, ordenados de mayor a menor (con empates permitidos). */
     val descending: List<TextStyle> = listOf(
-        displayLarge, displayMedium, headlineLarge, headlineMedium, headlineSmall,
+        displayLarge, displayMedium, displaySmall, headlineLarge, headlineMedium, headlineSmall,
         titleLarge, titleMedium, bodyLarge, labelLarge, titleSmall, bodyMedium,
         labelMedium, bodySmall, labelSmall,
     )
@@ -50,6 +51,7 @@ object MaticaTypography {
     val typography = Typography(
         displayLarge = displayLarge,
         displayMedium = displayMedium,
+        displaySmall = displaySmall,
         headlineLarge = headlineLarge,
         headlineMedium = headlineMedium,
         headlineSmall = headlineSmall,

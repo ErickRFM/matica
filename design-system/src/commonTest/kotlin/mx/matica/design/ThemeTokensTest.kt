@@ -65,6 +65,32 @@ class ThemeTokensTest {
     }
 
     @Test
+    fun ningunEstiloMaterialQuedaEnElDefault() {
+        val t = MaticaTypography.typography
+        val ours = listOf(
+            t.displayLarge to MaticaTypography.displayLarge,
+            t.displayMedium to MaticaTypography.displayMedium,
+            t.displaySmall to MaticaTypography.displaySmall,
+            t.headlineLarge to MaticaTypography.headlineLarge,
+            t.headlineMedium to MaticaTypography.headlineMedium,
+            t.headlineSmall to MaticaTypography.headlineSmall,
+            t.titleLarge to MaticaTypography.titleLarge,
+            t.titleMedium to MaticaTypography.titleMedium,
+            t.titleSmall to MaticaTypography.titleSmall,
+            t.bodyLarge to MaticaTypography.bodyLarge,
+            t.bodyMedium to MaticaTypography.bodyMedium,
+            t.bodySmall to MaticaTypography.bodySmall,
+            t.labelLarge to MaticaTypography.labelLarge,
+            t.labelMedium to MaticaTypography.labelMedium,
+            t.labelSmall to MaticaTypography.labelSmall,
+        )
+        ours.forEach { (fromTheme, token) ->
+            assertEquals(fromTheme, token, "Un rol de Typography quedó en el default de Material.")
+        }
+        assertEquals(15, MaticaTypography.descending.size)
+    }
+
+    @Test
     fun laEscalaTipograficaNoCreceYDejaAire() {
         val sizes = MaticaTypography.descending.map { it.fontSize.value }
         sizes.zip(sizes.drop(1)).forEach { (current, next) ->
