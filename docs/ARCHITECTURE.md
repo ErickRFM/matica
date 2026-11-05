@@ -1,6 +1,6 @@
 # Arquitectura Mática
 
-Última actualización: 2026-11-05 (Bloque 1 + auditoría de reutilización, fusionados en `main` con la PR #1 tras el CI en verde; el contraste Kotlin↔SymPy se ejecutó contra el servicio real).
+Última actualización: 2026-11-05 (Bloque 1 + auditoría de reutilización fusionados en `main` con la PR #1 tras el CI en verde; el Bloque 2 —motor de aprendizaje— viaja en su propia PR y aún sin fusionar).
 
 ## Principio rector
 
@@ -15,9 +15,10 @@ Orden de prioridad fijado por el prompt maestro, y usado para resolver conflicto
 | `:apps:androidApp` | `com.android.application` + Compose | Shell Android: Activity, navegación, temas, wiring de DI. Sin lógica de dominio. |
 | `:shared:math-engine` | KMP (`jvm` + `android`) | AST, parser, evaluación, racional exacto, equivalencia, transformaciones justificadas, análisis de error por paso, pistas, contrato `matica.symbolic.v1` y puerto `SymbolicGateway`. **Sin dependencias de red.** |
 | `:shared:math-remote` | KMP (`jvm` + `android`) | Adaptador Ktor del puerto: `symbolicHttpClient` + `KtorSymbolicGateway`. Aquí viven las dependencias de red; el motor no las ve. |
+| `:shared:learning-engine` | KMP (`jvm` + `android`) | Grafo de habilidades y prerrequisitos, nivel de dominio medible, escalonera de repaso espaciado y plan de estudio. Consume los veredictos de `:shared:math-engine`; **no calcula matemática**. |
 | `tools/symbolic-service` | Python + FastAPI + SymPy | Servicio auxiliar aislado. Solo calcula lo que Kotlin no demuestra offline, sobre un AST tipado; nunca recibe texto del estudiante. |
 
-Previsto y todavía **no creado** (se crea con código funcional, nunca vacío): `shared/core/{common,models,networking,database}`, `shared/learning-engine`, `shared/exercises`, `shared/gamification`, `shared/sync`, `shared/presentation`, `design-system`, `features/{onboarding,authentication,home,learning-path,lessons,practice,rewards,profile,classrooms}`, `backend/api`.
+Previsto y todavía **no creado** (se crea con código funcional, nunca vacío): `shared/core/{common,models,networking,database}`, `shared/exercises`, `shared/gamification`, `shared/sync`, `shared/presentation`, `design-system`, `features/{onboarding,authentication,home,learning-path,lessons,practice,rewards,profile,classrooms}`, `backend/api`.
 
 ## Reglas de dependencias
 
@@ -25,6 +26,7 @@ Previsto y todavía **no creado** (se crea con código funcional, nunca vacío):
 2. Un módulo de dominio **no** importa `android.*` ni Compose. Esto es lo que hace posible iOS sin reescribir lógica; hoy se garantiza con `jvmTest` puros en el motor.
 3. Las UI solo consumen `StateFlow` de ViewModel + intentos; no acceden a repositorios directamente.
 4. El backend es la única fuente de verdad de progreso, recompensas y dominio verificado. El cliente puede mostrar estados optimistas, pero se reconcilian.
+5. `:shared:learning-engine` depende solo de `:shared:math-engine` y de `kotlinx-datetime`. No ve Ktor ni `android.*`: decide con veredictos ya demostrados y fechas, no con cálculos propios.
 
 ## Modelo de datos y persistencia
 
@@ -69,6 +71,31 @@ delante del estudiante: la respuesta remera acompaña al veredicto offline, nunc
 - Límite asumido: el contrato Kotlin solo representa racionales exactos. Cuando SymPy devuelve `sqrt(2)`, el adaptador responde `NotSupported` en lugar de aproximar; una aproximación sería una mentira matemática.
 - Contraste ejecutado: `EquivalenciaKotlinSymPyTest` confronta 11 pasos y 7 ecuaciones con el servicio real y deja el informe en `docs/evidence/equivalencia-kotlin-sympy-2026-11-05.txt`. Ahí quedaron registrados los desacuerdos legítimos (SymPy no opina sobre identidades y contradicciones de una sola variable) y el sobrepropósito que el contraste obligó a corregir: `together(L - R)` colapsaba `(x²−4)/(x−2)` y tapaba el agujero `x ≠ 2`.
 
+## Motor de aprendizaje (Bloque 2)
+
+`SkillId` es el contrato estable: 15 habilidades con `id` y etiqueta en español, declaradas en el motor
+matemático porque las emiten las reglas de transformación (`RuleId.skills`) y los errores de paso.
+
+- **Grafo de prerrequisitos** (`SkillGraph` + `DefaultCurriculum`): DAG validado al construirse. Un autorrequisito
+  o un ciclo se rechazan con el camino exacto (`Cycle(path)`), nunca se limpian en silencio. El orden topológico es
+  determinista (Kahn con desempate por el orden de la enumeración), así que dos construcciones del mismo plan dan la
+  misma secuencia. `availableSkills(mastered)` es la frontera: nada se propone con un prerrequisito sin dominar, y
+  `pathTo` explica cuántos faltan y cuáles.
+- **Dominio medible** (`MasteryRules`): nivel `NOT_INTRODUCED → DEVELOPING → PROFICIENT → FLUENT` calculado sobre la
+  ventana de los últimos 8 intentos. Cada cambio lleva un motivo contable ("5 sin pista, 1 con pista, 2 incorrectas"),
+  y bajar de nivel usa las mismas dos evidencias incorrectas recientes que exigiría subir. No hay puntaje oculto.
+- **Repaso espaciado explicable** (`ReviewLadder` + `ReviewRules`): escalonera fija de 1, 3, 7, 14 y 30 días. Se aplica
+  el intervalo que la etapa actual ya ganó; un fallo devuelve a la etapa 0 y reprograma al día siguiente; un recuerdo
+  con pista repite etapa; intentar dos veces el mismo día no avanza. El motivo de cada decisión se devuelve junto al
+  estado.
+- **`atRisk` es una señal, no una sanción**: un vencido que supera su propio intervalo aparece en el plan y baja la
+  confianza, pero el nivel solo cambia con evidencia real.
+- **Evidencia sin inventar nada** (`EvidenceFromVerdict`): de `StepVerdict.Valid` sale una evidencia por habilidad de
+  la regla aplicada; de `Invalid`, la habilidad asociada al error concreto; de `Indeterminate` y `SyntaxProblem`,
+  ninguna. Un paso que el motor no pudo demostrar no puede contar como dominio.
+- **`LearningEngine`** es la fachada de esta capa: perfiles inmutables, `record`/`recordAll` y `plan(profile, today)`
+  que pone los repasos vencidos antes que el trabajo nuevo.
+
 ## Backend Ktor
 
 - REST versionado (`/v1/...`), contratos con kotlinx-serialization.
@@ -81,7 +108,7 @@ delante del estudiante: la respuesta remera acompaña al veredicto offline, nunc
 
 - Logs estructurados sin datos personales.
 - Pruebas: `kotlin-test` para reglas y motor, Turbine para flujos de estado, pruebas Compose para UI, `ktor-server-test-host` para la API, integración PostgreSQL real cuando el daemon de Docker o una instancia remota esté disponible.
-- CI: `.github/workflows/ci.yml` corre `:shared:math-engine:jvmTest`, `:shared:math-remote:jvmTest`, `testAndroidHostTest` de ambos módulos y `:apps:androidApp:assembleDebug` en `ubuntu-latest`, y publica el APK debug como artefacto. El contraste Kotlin↔SymPy **no** entra en CI: necesita el servicio Python levantado, y un verde que dependa de un motor no desplegado sería una señal falsa. Los jobs de `lint` y `backend:test` se añaden cuando exista código que cubrir; crear un paso vacío daría una señal de verde sin significado. Sin fusión a `main` con CI en rojo.
+- CI: `.github/workflows/ci.yml` corre `jvmTest` y `testAndroidHostTest` de `:shared:math-engine`, `:shared:math-remote` y `:shared:learning-engine`, más `:apps:androidApp:assembleDebug` en `ubuntu-latest`, y publica el APK debug como artefacto. El contraste Kotlin↔SymPy **no** entra en CI: necesita el servicio Python levantado, y un verde que dependa de un motor no desplegado sería una señal falsa. Los jobs de `lint` y `backend:test` se añaden cuando exista código que cubrir; crear un paso vacío daría una señal de verde sin significado. Sin fusión a `main` con CI en rojo.
 
 ## Pendientes de decisión justificada
 
