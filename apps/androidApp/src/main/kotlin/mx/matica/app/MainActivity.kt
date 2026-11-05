@@ -14,14 +14,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
+import mx.matica.design.theme.MaticaTheme
+import mx.matica.design.tokens.MaticaSpacing
 import mx.matica.math.numeric.Rational
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme {
+            MaticaTheme {
                 Scaffold { innerPadding ->
                     SmokeScreen(modifier = Modifier.padding(innerPadding))
                 }
@@ -35,7 +36,7 @@ class MainActivity : ComponentActivity() {
 fun SmokeScreen(modifier: Modifier = Modifier) {
     val probe = Rational.of(1, 2) + Rational.of(1, 3)
     Column(
-        modifier = modifier.fillMaxSize().padding(24.dp),
+        modifier = modifier.fillMaxSize().padding(MaticaSpacing.xl),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

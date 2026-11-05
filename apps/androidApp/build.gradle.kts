@@ -46,6 +46,7 @@ android {
 }
 
 dependencies {
+    implementation(project(":design-system"))
     implementation(project(":shared:math-engine"))
 
     implementation(platform(libs.androidx.compose.bom))

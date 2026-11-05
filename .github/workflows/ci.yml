@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   verify:
-    name: Motor matemático y app Android
+    name: Motor matemático, sistema visual y app Android
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -42,6 +42,12 @@ jobs:
       - name: Pruebas de la fachada remota (target Android, host)
         run: ./gradlew :shared:math-remote:testAndroidHostTest --stacktrace
 
+      - name: Pruebas del sistema visual (JVM)
+        run: ./gradlew :design-system:jvmTest --stacktrace
+
+      - name: Pruebas del sistema visual (target Android, host)
+        run: ./gradlew :design-system:testAndroidHostTest --stacktrace
+
       - name: Compilar APK debug
         run: ./gradlew :apps:androidApp:assembleDebug --stacktrace
 
@@ -49,10 +55,11 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: math-test-reports
+          name: test-reports
           path: |
             shared/math-engine/build/reports/tests/
             shared/math-remote/build/reports/tests/
+            design-system/build/reports/tests/
           if-no-files-found: ignore
           retention-days: 14
 
