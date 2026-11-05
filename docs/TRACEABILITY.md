@@ -15,16 +15,16 @@ Estados: `completo` (evidencia ejecutada) · `en progreso` · `parcial` · `pend
 | B0-07 | Documentación de arquitectura | P§17A | `docs/ARCHITECTURE.md` | completo | Revisión manual |
 | B0-08 | Blueprint leído | P§0 | — | bloqueado | Archivo inexistente en el entorno (búsqueda documentada) |
 | B0-09 | Tokens extraídos de Figma | P§0/§8 | design-system | bloqueado | Sin conector Figma; se definen tokens propios y se reconcilian después |
-| B1-01 | AST con expresiones tipadas | P§4 | `shared/math-engine` | en progreso | Pruebas de parser pendientes de ampliarse |
-| B1-02 | Parser rechaza sintaxis ambigua | P§4 | `…/parser` | pendiente | — |
-| B1-03 | Fracciones exactas (sin `Double`) | P§4 | `…/numeric/Rational` | parcial | 5 pruebas en `RationalTest` pasan; aún sin BigInt interno |
-| B1-04 | Validación de igualdades y transformaciones | P§4 | `…/equivalence` | pendiente | — |
-| B1-05 | Evaluación paso a paso de procedimientos | P§4 | `…/stepwise` | pendiente | — |
-| B1-06 | Distinguir error numérico de conceptual | P§4 | `…/erroranalysis` | pendiente | — |
-| B1-07 | Pistas progresivas sin revelar respuesta | P§4 | `…/hints` | pendiente | — |
-| B1-08 | Comprobación por sustitución | P§4 | `…/verify` | pendiente | — |
-| B1-09 | Casos especiales cubiertos por pruebas (div. por cero, dominio, raíces extrañas, signos, jerarquía, distribución, redondeo, unidades) | P§4 | `shared/math-engine` | pendiente | Tabla de casos en pruebas del motor |
-| B1-10 | Resultado indeterminado cuando no se puede verificar | P§4 | `…/equivalence` | pendiente | — |
+| B1-01 | AST con expresiones tipadas | P§4 | `shared/math-engine/…/ast` | completo | `ExprParserTest` (12) y `poly.NormalizerTest` (12) en verde |
+| B1-02 | Parser rechaza sintaxis ambigua | P§4 | `…/parser` | completo | Casos `2 3`, `1.2.3`, `x = = 2`, `2(x+3`, `=14`, `2(x+3)=14=7` y `sen(x)` rechazados con posición y sugerencia |
+| B1-03 | Fracciones exactas (sin `Double`) | P§4 | `…/numeric/Rational` | completo | `RationalTest` (10): forma canónica, signe, `0.1+0.2 = 3/10`, potencias negativas, mcm |
+| B1-04 | Validación de igualdades y transformaciones | P§4 | `…/poly` + `…/analysis` | completo | Equivalencia por proporcionalidad de polinomios canónicos; `StepAnalyzerTest` valida 8 pasos correctos |
+| B1-05 | Evaluación paso a paso de procedimientos | P§4 | `…/analysis/StepAnalyzer` | completo | `MathEngineTest.analizaElProblemaCompletoDelPromptPasoAPaso` recorre `2(x+3)=14 → 2x+6=14 → 2x=8 → x=4` |
+| B1-06 | Distinguir error numérico de conceptual | P§4 | `…/analysis` | completo | `1/3+1/6 → 2/9` se atribuye a jerarquía y `2+3*4 → 15` a aritmética; distribuir, signo, un solo lado, raíz perdida y extraña tienen veredicto propio |
+| B1-07 | Pistas progresivas sin revelar respuesta | P§4 | `…/hints` | completo | `HintProviderTest` (5): escalera CONCEPT/LOCATE/NAME_RULE sin_solution, `SHOW_LINE` solo a petición |
+| B1-08 | Comprobación por sustitución | P§4 | `…/verify` | completo | `SolutionVerifierTest` (6): satisface, no satisface, extrana por dominio, `Blocked` distinto de fallar |
+| B1-09 | Casos especiales cubiertos por pruebas | P§4 | `shared/math-engine` | parcial | Cubiertos: división por cero, dominio, raíces extrañas y perdidas, fracciones equivalentes, signos, jerarquía, distribución, decimales exactos. Falta **unidades** (requiere tipo de unidad en el AST, Bloque 2) |
+| B1-10 | Resultado indeterminado cuando no se puede verificar | P§4 | `…/analysis` | completo | `(x+1)/x = 2 → x+1 = 2` devuelve `Indeterminate`; el motor no acusa lo que no demuestra |
 | B2-01 | Grafo de habilidades y prerrequisitos | P§6 | `shared/learning-engine` | pendiente | — |
 | B2-02 | Diagnóstico inicial | P§6 | `features/*` + backend | pendiente | — |
 | B2-03 | Plantillas parametrizadas de ejercicio | P§5 | `shared/exercises` | pendiente | — |
