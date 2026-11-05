@@ -36,6 +36,12 @@ jobs:
       - name: Pruebas del motor (target Android, host)
         run: ./gradlew :shared:math-engine:testAndroidHostTest --stacktrace
 
+      - name: Pruebas de la fachada remota (JVM, MockEngine sin servicio)
+        run: ./gradlew :shared:math-remote:jvmTest --stacktrace
+
+      - name: Pruebas de la fachada remota (target Android, host)
+        run: ./gradlew :shared:math-remote:testAndroidHostTest --stacktrace
+
       - name: Compilar APK debug
         run: ./gradlew :apps:androidApp:assembleDebug --stacktrace
 
@@ -43,8 +49,10 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: math-engine-test-reports
-          path: shared/math-engine/build/reports/tests/
+          name: math-test-reports
+          path: |
+            shared/math-engine/build/reports/tests/
+            shared/math-remote/build/reports/tests/
           if-no-files-found: ignore
           retention-days: 14
 

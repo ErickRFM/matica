@@ -1,6 +1,6 @@
 # Arquitectura Mática
 
-Última actualización: 2026-11-05 (Bloque 1 entregado en la PR #1 con CI en verde; pendiente de fusión).
+Última actualización: 2026-11-05 (Bloque 1 + auditoría de reutilización; el contraste Kotlin↔SymPy ya se ejecutó contra el servicio real).
 
 ## Principio rector
 
@@ -13,7 +13,9 @@ Orden de prioridad fijado por el prompt maestro, y usado para resolver conflicto
 | Módulo | Tipo | Responsabilidad |
 |---|---|---|
 | `:apps:androidApp` | `com.android.application` + Compose | Shell Android: Activity, navegación, temas, wiring de DI. Sin lógica de dominio. |
-| `:shared:math-engine` | KMP (`jvm` + `android`) | AST, parser, evaluación, racional exacto, equivalencia, transformaciones justificadas, análisis de error por paso, pistas. |
+| `:shared:math-engine` | KMP (`jvm` + `android`) | AST, parser, evaluación, racional exacto, equivalencia, transformaciones justificadas, análisis de error por paso, pistas, contrato `matica.symbolic.v1` y puerto `SymbolicGateway`. **Sin dependencias de red.** |
+| `:shared:math-remote` | KMP (`jvm` + `android`) | Adaptador Ktor del puerto: `symbolicHttpClient` + `KtorSymbolicGateway`. Aquí viven las dependencias de red; el motor no las ve. |
+| `tools/symbolic-service` | Python + FastAPI + SymPy | Servicio auxiliar aislado. Solo calcula lo que Kotlin no demuestra offline, sobre un AST tipado; nunca recibe texto del estudiante. |
 
 Previsto y todavía **no creado** (se crea con código funcional, nunca vacío): `shared/core/{common,models,networking,database}`, `shared/learning-engine`, `shared/exercises`, `shared/gamification`, `shared/sync`, `shared/presentation`, `design-system`, `features/{onboarding,authentication,home,learning-path,lessons,practice,rewards,profile,classrooms}`, `backend/api`.
 
@@ -52,6 +54,21 @@ Una lección interrumpida por cierre de app se reanuda desde el último intento 
 - Análisis de error: comparar paso anterior y paso actual determina la regla faltante o mal aplicada y produce una pista sin revelar la respuesta.
 - Dominio: los denominadores de la ecuación generan restricciones; una solución que viola una restricción se reporta como raíz extraña, no como solución.
 
+## Cálculo ampliado con SymPy (contrato `matica.symbolic.v1`)
+
+Regla de una sola fachada: la app y el backend consumen **únicamente** `MathEngine`. El motor offline
+decide primero; el cálculo ampliado solo se consulta cuando offline admite no poder demostrar
+(`StepVerdict.Indeterminate` o `SolveOutcome.Blocked`). Así es imposible que dos motores discutan
+delante del estudiante: la respuesta remera acompaña al veredicto offline, nunca lo reemplaza.
+
+- `MathEngine.checkStepExtended(...)` devuelve `StepAssessment(offline, remote?)`; `remote` es `null` cuando no hizo falta o no hay gateway configurado.
+- El puerto `SymbolicGateway` está declarado en `:shared:math-engine`; el adaptador Ktor vive en `:shared:math-remote`. Borrar el módulo remoto no cambia una sola conclusión matemática.
+- Viaje tipado en AST (`SymbolicNode`), con `contractVersion` obligatoria, tope de 256 nodos y 32 niveles. Las constantes son cadenas exactas (`-1/2`), nunca flotantes JSON.
+- Prohibido por diseño: el servicio no tiene ningún endpoint que acepte texto matemático. No existe `sympify`, `parse_expr` ni `eval` sobre la entrada; el AST se construye nodo a nodo desde una lista cerrada de clases SymPy. Los tests `test_service.py` incluyen `__import__('os')...` y un `kind` desconocido como casos rechazados.
+- Presupuestos: 8 s por operación en el servicio, 10 s de timeout en el cliente. Un 504 o un fallo de red se reporta como `TransportFailure`, no como veredicto.
+- Límite asumido: el contrato Kotlin solo representa racionales exactos. Cuando SymPy devuelve `sqrt(2)`, el adaptador responde `NotSupported` en lugar de aproximar; una aproximación sería una mentira matemática.
+- Contraste ejecutado: `EquivalenciaKotlinSymPyTest` confronta 11 pasos y 7 ecuaciones con el servicio real y deja el informe en `docs/evidence/equivalencia-kotlin-sympy-2026-11-05.txt`. Ahí quedaron registrados los desacuerdos legítimos (SymPy no opina sobre identidades y contradicciones de una sola variable) y el sobrepropósito que el contraste obligó a corregir: `together(L - R)` colapsaba `(x²−4)/(x−2)` y tapaba el agujero `x ≠ 2`.
+
 ## Backend Ktor
 
 - REST versionado (`/v1/...`), contratos con kotlinx-serialization.
@@ -64,10 +81,11 @@ Una lección interrumpida por cierre de app se reanuda desde el último intento 
 
 - Logs estructurados sin datos personales.
 - Pruebas: `kotlin-test` para reglas y motor, Turbine para flujos de estado, pruebas Compose para UI, `ktor-server-test-host` para la API, integración PostgreSQL real cuando el daemon de Docker o una instancia remota esté disponible.
-- CI: `.github/workflows/ci.yml` corre `:shared:math-engine:jvmTest`, `:shared:math-engine:testAndroidHostTest` y `:apps:androidApp:assembleDebug` en `ubuntu-latest`, y publica el APK debug como artefacto. Los jobs de `lint` y `backend:test` se añaden cuando exista código que cubrir; crear un paso vacío daría una señal de verde sin significado. Sin fusión a `main` con CI en rojo.
+- CI: `.github/workflows/ci.yml` corre `:shared:math-engine:jvmTest`, `:shared:math-remote:jvmTest`, `testAndroidHostTest` de ambos módulos y `:apps:androidApp:assembleDebug` en `ubuntu-latest`, y publica el APK debug como artefacto. El contraste Kotlin↔SymPy **no** entra en CI: necesita el servicio Python levantado, y un verde que dependa de un motor no desplegado sería una señal falsa. Los jobs de `lint` y `backend:test` se añaden cuando exista código que cubrir; crear un paso vacío daría una señal de verde sin significado. Sin fusión a `main` con CI en rojo.
 
 ## Pendientes de decisión justificada
 
+- **Álgebra simbólica propia**: se conserva el motor Kotlin para lineal, grado 2 con raíz racional, dominio y análisis de error por paso. Lo que no demuestra (`Indeterminate`/`Blocked`) se delega; no se duplica un CAS dentro del cliente. El detalle de qué se adopta de cada repositorio está en `docs/DEPENDENCIES.md`.
 - **iOS**: aún no se declaran targets `iosArm64`/`iosSimulatorArm64`. Su compilación y link requieren macOS/Xcode; prometer paridad sin ese entorno sería una afirmación sin evidencia. La preparación se hace manteniendo el dominio libre de APIs de Android.
 - **IA adaptativa**: el repaso espaciado arranca con reglas explícitas y medibles; no se introduce un modelo complejo antes de medir que mejora el aprendizaje.
 - **Clasificaciones sociales**: deshabilitadas en MVP por tratarse de usuarios menores de edad.

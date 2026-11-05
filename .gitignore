@@ -15,3 +15,10 @@ captures/
 google-services.json
 *.env
 .env*
+
+# Entorno Python del servicio simbólico auxiliar (no es código de la app)
+.venv*/
+__pycache__/
+*.pyc
+.pytest_cache/
+tmp-audit/

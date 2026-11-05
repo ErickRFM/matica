@@ -66,10 +66,10 @@ class StepAnalyzer {
             val lost = lostSolutions(before, after)
             if (lost.isNotEmpty()) return lostSolutionVerdict(lost)
 
-            val rule = if (factor == Rational.ONE) {
-                attributeStructuralRule(before, after)
-            } else {
-                scalingRule(factor)
+            val rule = when {
+                factor == Rational.ONE -> attributeStructuralRule(before, after)
+                swapsSides(before, after) -> RuleId.EQUIVALENT_REWRITE
+                else -> scalingRule(factor)
             }
             return StepVerdict.Valid(rule = rule, skills = rule.skills)
         }
@@ -108,12 +108,27 @@ class StepAnalyzer {
             ?: return StepVerdict.Indeterminate(canonicalReason(before))
         val canonicalAfter = (Normalizer.of(after) as? PolyOutcome.Value)?.polynomial
             ?: return StepVerdict.Indeterminate(canonicalReason(after))
-        val factor = canonicalBefore.proportionalityFactorTo(canonicalAfter)
-            ?: return StepVerdict.Indeterminate(
-                "La expresión resultante no es equivalente a la anterior y no puedo atribuirlo a un error típico.",
+        // Dos expresiones sueltas (sin '=') solo son el mismo objeto si sus formas canónicas
+        // coinciden término a término. La proporcionalidad vale para ecuaciones —multiplicar los
+        // dos lados conserva el conjunto solución—, pero `2x+3x` y `6x` son proporcionales y no
+        // son la misma expresión: aceptarlo habría inventado una corrección.
+        if (canonicalAfter == canonicalBefore) {
+            val rule = if (before.containsProductWithSum()) RuleId.DISTRIBUTE else RuleId.EQUIVALENT_REWRITE
+            return StepVerdict.Valid(rule = rule, skills = rule.skills)
+        }
+
+        val combiningSlip = combiningLikeTermsSlip(canonicalBefore, canonicalAfter)
+        if (combiningSlip != null) {
+            return StepVerdict.Invalid(
+                error = StepError.ARITHMETIC_ERROR,
+                detail = "Los términos son semejantes pero el coeficiente correcto es ${combiningSlip.second}, no ${combiningSlip.first}.",
+                repairHint = "Al reunir términos semejantes se suman los coeficientes; la parte literal no cambia.",
             )
-        val rule = if (factor == Rational.ONE) RuleId.EQUIVALENT_REWRITE else scalingRule(factor)
-        return StepVerdict.Valid(rule = rule, skills = rule.skills)
+        }
+
+        return StepVerdict.Indeterminate(
+            "La expresión resultante no es equivalente a la anterior y no puedo atribuirlo a un error típico.",
+        )
     }
 
     private fun diagnoseInvalid(
@@ -175,6 +190,15 @@ class StepAnalyzer {
             }
         }
 
+        // Los heurísticos de delta por lado asumen transformaciones lineales. En `x^2 = 4 → x = 2`
+        // acusarían de operación desbalanceada un paso que en realidad es correcto: el motor offline
+        // no demuestra extracción de raíces, así que lo admite en lugar de inventar una culpa.
+        if (canonicalBefore.degree > 1 || canonicalAfter.degree > 1) {
+            return StepVerdict.Indeterminate(
+                "La línea involucra potencias de grado ${maxOf(canonicalBefore.degree, canonicalAfter.degree)} y la validación offline cubre transformaciones lineales; pide el análisis ampliado para juzgarla.",
+            )
+        }
+
         val leftDelta = sideDelta(before.left, after.left)
         val rightDelta = sideDelta(before.right, after.right)
         if (leftDelta != null && rightDelta != null && leftDelta != rightDelta) {
@@ -231,6 +255,29 @@ class StepAnalyzer {
 
     private fun scalingRule(factor: Rational): RuleId =
         if (factor.abs < Rational.ONE) RuleId.DIVIDE_BOTH_SIDES_BY else RuleId.MULTIPLY_BOTH_SIDES_BY
+
+    /** `5 = x` a partir de `x = 5`: los dos lados aparecen literalmente intercambiados. */
+    private fun swapsSides(before: Expr.Equals, after: Expr.Equals): Boolean {
+        val beforeLeft = (Normalizer.of(before.left) as? PolyOutcome.Value)?.polynomial ?: return false
+        val beforeRight = (Normalizer.of(before.right) as? PolyOutcome.Value)?.polynomial ?: return false
+        val afterLeft = (Normalizer.of(after.left) as? PolyOutcome.Value)?.polynomial ?: return false
+        val afterRight = (Normalizer.of(after.right) as? PolyOutcome.Value)?.polynomial ?: return false
+        return beforeLeft == afterRight && beforeRight == afterLeft
+    }
+
+    /** Mismos términos semejantes y coeficiente mal calculado: `(estudiante, correcto)`. */
+    private fun combiningLikeTermsSlip(before: Polynomial, after: Polynomial): Pair<Rational, Rational>? {
+        if (before.isConstant || after.isConstant) return null
+        if (before.degree != after.degree) return null
+        val beforeVariables = before.nonConstantTerms().sortedBy { it.first }
+        val afterVariables = after.nonConstantTerms().sortedBy { it.first }
+        if (beforeVariables.size != afterVariables.size || beforeVariables.isEmpty()) return null
+        if (beforeVariables.map { it.first } != afterVariables.map { it.first }) return null
+        if (before.constantTerm != after.constantTerm) return null
+        val mismatched = beforeVariables.zip(afterVariables).firstOrNull { (origin, student) -> origin.second != student.second }
+            ?: return null
+        return mismatched.second.second to mismatched.first.second
+    }
 
     private fun lostSolutionVerdict(lost: List<String>): StepVerdict = StepVerdict.Invalid(
         error = StepError.LOST_SOLUTION,

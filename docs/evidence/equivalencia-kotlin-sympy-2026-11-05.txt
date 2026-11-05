@@ -1,0 +1,59 @@
+CONTRASTE Kotlin vs SymPy  (http://127.0.0.1:8099)
+
+PASOS
+  [lineal equivalente] '2x + 3 = 7' -> '2x = 4'
+      kotlin: valido (SUBTRACT_FROM_BOTH_SIDES)
+      sympy : equivalente (dominio=[], forma_canonica_identica)
+  [distributiva equivalente] '2(x+3) = 14' -> '2x + 6 = 14'
+      kotlin: valido (DISTRIBUTE)
+      sympy : equivalente (dominio=[], forma_canonica_identica)
+  [despeje equivalente] 'x/2 = 3' -> 'x = 6'
+      kotlin: valido (MULTIPLY_BOTH_SIDES_BY)
+      sympy : equivalente (dominio=[], conjuntos_de_solucion_sobre_reales)
+  [intercambio de lados] '5 = x' -> 'x = 5'
+      kotlin: valido (EQUIVALENT_REWRITE)
+      sympy : equivalente (dominio=[], conjuntos_de_solucion_sobre_reales)
+  [contradicción correcta] '3x + 2 = 3x + 5' -> '2 = 5'
+      kotlin: valido (SUBTRACT_FROM_BOTH_SIDES)
+      sympy : no_soportado: La comparación de pasos requiere una sola incógnita en las dos líneas.
+  [solución perdida] 'x^2 = x' -> 'x = 1'
+      kotlin: invalido (LOST_SOLUTION)
+      sympy : no_equivalente (perdidas=0, extrañas=[], dominio=[], conjuntos_de_solucion_sobre_reales)
+  [solución extraña] 'x - 1 = 3' -> 'x(x - 1) = 3x'
+      kotlin: invalido (ADDED_SOLUTION)
+      sympy : no_equivalente (perdidas=[], extrañas=0, dominio=[], conjuntos_de_solucion_sobre_reales)
+  [cuadrática con raíz faltante] 'x^2 = 4' -> 'x = 2'
+      kotlin: indeterminado
+      sympy : no_equivalente (perdidas=-2, extrañas=[], dominio=[], conjuntos_de_solucion_sobre_reales)
+  [restricción de dominio] '(x^2-4)/(x-2) = x+2' -> 'x^2-4 = (x+2)(x-2)'
+      kotlin: indeterminado
+      sympy : no_equivalente (perdidas=[], extrañas=2, dominio=2, restricciones_de_dominio_distintas)
+  [racional con hueco] '2/x = 4' -> '2 = 4x'
+      kotlin: indeterminado
+      sympy : equivalente (dominio=0, restricciones_de_dominio_distintas)
+  [lado derecho mal] '2x + 3 = 7' -> '2x = 10'
+      kotlin: invalido (NOT_BALANCED_OPERATION)
+      sympy : no_equivalente (perdidas=2, extrañas=5, dominio=[], conjuntos_de_solucion_sobre_reales)
+
+ECUACIONES
+  [lineal] '2x + 3 = 7'
+      kotlin: unica x=2
+      sympy : resuelto x=2 rechazadas=[] dominio=[]
+  [cuadrática con raíz racional] 'x^2 = 4'
+      kotlin: varias x=-2, 2
+      sympy : resuelto x=-2, 2 rechazadas=[] dominio=[]
+  [cuadrática irracional] 'x^2 = 2'
+      kotlin: bloqueado
+      sympy : no_soportado: El servicio devolvió un valor que no es un número exacto y el motor Kotlin no lo puede comparar sin perder precisión.
+  [racional] '2/x = 4'
+      kotlin: bloqueado
+      sympy : resuelto x=1/2 rechazadas=[] dominio=0
+  [contradicción] '3x + 2 = 3x + 5'
+      kotlin: sin_solution
+      sympy : no_soportado: Se requiere exactamente una incógnita; se recibieron 0.
+  [identidad] '2x = 2x'
+      kotlin: identidad
+      sympy : no_soportado: Se requiere exactamente una incógnita; se recibieron 0.
+  [identidad con hueco] '(x^2-4)/(x-2) = x+2'
+      kotlin: bloqueado
+      sympy : no_soportado: El conjunto solución no es enumerable sobre los reales.

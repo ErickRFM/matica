@@ -13,6 +13,9 @@ import mx.matica.math.hints.HintProvider
 import mx.matica.math.numeric.Rational
 import mx.matica.math.parser.ExprParser
 import mx.matica.math.parser.ParseOutcome
+import mx.matica.math.remote.RemoteSolutions
+import mx.matica.math.remote.RemoteStep
+import mx.matica.math.remote.SymbolicGateway
 import mx.matica.math.printer.ExprPrinter
 import mx.matica.math.solve.LinearSolver
 import mx.matica.math.solve.SolveOutcome
@@ -27,6 +30,7 @@ import mx.matica.math.verify.VerificationOutcome
 class MathEngine(
     private val stepAnalyzer: StepAnalyzer = StepAnalyzer(),
     private val hintProvider: HintProvider = HintProvider(),
+    private val remote: SymbolicGateway? = null,
 ) {
 
     fun parse(input: String): ParseOutcome = ExprParser(input).parse()
@@ -61,4 +65,30 @@ class MathEngine(
 
     fun hints(equationText: String, upTo: HintLevel = HintLevel.NAME_RULE): List<Hint> =
         hintProvider.hintsFor(equationText, upTo)
+
+    /** Valida un paso y, si y solo si lo offline quedó indeterminado, pide el análisis ampliado. */
+    suspend fun checkStepExtended(beforeText: String, afterText: String): StepAssessment {
+        val offline = checkStep(beforeText, afterText)
+        val gateway = remote ?: return StepAssessment(offline, null)
+        if (offline !is StepVerdict.Indeterminate) return StepAssessment(offline, null)
+
+        val before = parseOrNull(beforeText) as? Expr.Equals ?: return StepAssessment(offline, null)
+        val after = parseOrNull(afterText) as? Expr.Equals ?: return StepAssessment(offline, null)
+        return StepAssessment(offline, gateway.classifyStep(before, after))
+    }
+
+    /** Resuelve offline y delega solo cuando el resolutor lineal se declara sin capacidad. */
+    suspend fun solveExtended(input: String): SolutionAssessment {
+        val offline = solve(input)
+        val gateway = remote ?: return SolutionAssessment(offline, null)
+        if (offline !is SolveOutcome.Blocked) return SolutionAssessment(offline, null)
+
+        val equation = parseOrNull(input) as? Expr.Equals ?: return SolutionAssessment(offline, null)
+        return SolutionAssessment(offline, gateway.solve(equation))
+    }
 }
+
+/** Veredicto offline acompañable por el cálculo ampliado. `remote` nulo significa "no hizo falta o no hay servicio". */
+data class StepAssessment(val offline: StepVerdict, val remote: RemoteStep?)
+
+data class SolutionAssessment(val offline: SolveOutcome, val remote: RemoteSolutions?)

@@ -29,3 +29,4 @@ rootProject.name = "matica"
 
 include(":apps:androidApp")
 include(":shared:math-engine")
+include(":shared:math-remote")
