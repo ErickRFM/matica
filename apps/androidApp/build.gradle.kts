@@ -46,6 +46,7 @@ android {
 }
 
 dependencies {
+    implementation(project(":design-system"))
     implementation(project(":shared:math-engine"))
 
     implementation(platform(libs.androidx.compose.bom))
@@ -68,4 +69,10 @@ dependencies {
     testImplementation(libs.kotlin.test)
     testImplementation(libs.turbine)
     androidTestImplementation(libs.kotlin.test)
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
