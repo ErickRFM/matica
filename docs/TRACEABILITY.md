@@ -43,9 +43,9 @@ Estados: `completo` (evidencia ejecutada) · `en progreso` · `parcial` · `pend
 | B5-03 | FCM | P§13 | `apps/androidApp` | bloqueado | Sin `google-services.json` propio |
 | B6-01 | Herramientas de autoría y grupos | P§12 | `backend/curriculum` | pendiente | — |
 | B7-01 | APK debug instalable | P§11/§17 | `apps/androidApp` | completo | `androidApp-debug.apk` 14 MB generado |
-| B7-02 | Pruebas unitarias y de integración | P§16 | todos | en progreso | `jvmTest` verde; resto pendiente |
+| B7-02 | Pruebas unitarias y de integración | P§16 | todos | en progreso | 89 pruebas del motor en verde en `jvmTest` y `testAndroidHostTest`; faltan integración de backend y pruebas Compose |
 | B7-03 | Instalación y captura en dispositivo real | P§17D | — | bloqueado | Ningún dispositivo/emulador conectado |
 | B7-04 | AAB release firmado | P§1/§7 | CI | bloqueado | Sin keystore ni credenciales |
-| G-01 | Rama dedicada y commits claros, CI verde antes de fusionar | P§15 | git | en progreso | Repo iniciado en `main`; rama de trabajo por bloque |
+| G-01 | Rama dedicada y commits claros, CI verde antes de fusionar | P§15 | git + `.github/workflows/ci.yml` | parcial | CI ejecutado y en verde en la PR #1 (run 42043092148, 3m28s): jvmTest, testAndroidHostTest y assembleDebug. Falta la protección de rama `main`, decisión del propietario |
 
-Resumen honesto: de 44 requisitos verificados o creados, **7 completos**, **4 en progreso**, **4 bloqueados por recursos externos** y el resto pendientes. Ninguna función se declara terminada sin la evidencia indicada en la columna de validación.
+Resumen honesto: 41 requisitos rastreados — **16 completos** (evidencia ejecutada), **2 parciales** (B1-09 unidades, G-01 protección de rama), **1 en progreso** (B7-02), **6 bloqueados por recursos externos** (blueprint, Figma, PostgreSQL, FCM, dispositivo real, keystore de release) y **16 pendientes**. Ninguna función se declara terminada sin la evidencia indicada en la columna de validación.

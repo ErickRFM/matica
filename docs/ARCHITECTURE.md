@@ -1,6 +1,6 @@
 # Arquitectura Mática
 
-Última actualización: 2026-11-04 (Bloque 0 completado, Bloque 1 en curso).
+Última actualización: 2026-11-05 (Bloque 1 entregado en la PR #1 con CI en verde; pendiente de fusión).
 
 ## Principio rector
 
@@ -64,7 +64,7 @@ Una lección interrumpida por cierre de app se reanuda desde el último intento 
 
 - Logs estructurados sin datos personales.
 - Pruebas: `kotlin-test` para reglas y motor, Turbine para flujos de estado, pruebas Compose para UI, `ktor-server-test-host` para la API, integración PostgreSQL real cuando el daemon de Docker o una instancia remota esté disponible.
-- CI: GitHub Actions con jobs de `lint`, `test`, `assembleDebug` y `backend:test`; sin fusión a `main` con CI en rojo.
+- CI: `.github/workflows/ci.yml` corre `:shared:math-engine:jvmTest`, `:shared:math-engine:testAndroidHostTest` y `:apps:androidApp:assembleDebug` en `ubuntu-latest`, y publica el APK debug como artefacto. Los jobs de `lint` y `backend:test` se añaden cuando exista código que cubrir; crear un paso vacío daría una señal de verde sin significado. Sin fusión a `main` con CI en rojo.
 
 ## Pendientes de decisión justificada
 
