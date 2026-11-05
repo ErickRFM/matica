@@ -18,14 +18,12 @@ navigationCompose = "2.10.2"
 composeBom = "2026.09.00"
 datastore = "1.3.0"
 workManager = "2.12.0"
-sqldelightAndroid = "2.4.1"
 turbine = "1.2.1"
 junitJupiter = "5.14.4"
 kotlinTest = "2.4.21"
 bignum = "0.3.10"
 logback = "1.5.22"
 postgresJdbc = "42.7.5"
-kmath = "0.6.0"
 
 [libraries]
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
@@ -82,7 +80,6 @@ junit-jupiter-engine = { module = "org.junit.jupiter:junit-jupiter-engine", vers
 turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 postgres-jdbc = { module = "org.postgresql:postgresql", version.ref = "postgresJdbc" }
-kmath-core = { module = "space.kscience:kmath-core", version.ref = "kmath" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

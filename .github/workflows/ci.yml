@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Motor matemático y app Android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: wrapper
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+
+      - name: Pruebas del motor (JVM puro, tiempo de ejecución real)
+        run: ./gradlew :shared:math-engine:jvmTest --stacktrace
+
+      - name: Pruebas del motor (target Android, host)
+        run: ./gradlew :shared:math-engine:testAndroidHostTest --stacktrace
+
+      - name: Pruebas de la fachada remota (JVM, MockEngine sin servicio)
+        run: ./gradlew :shared:math-remote:jvmTest --stacktrace
+
+      - name: Pruebas de la fachada remota (target Android, host)
+        run: ./gradlew :shared:math-remote:testAndroidHostTest --stacktrace
+
+      - name: Compilar APK debug
+        run: ./gradlew :apps:androidApp:assembleDebug --stacktrace
+
+      - name: Subir informes de pruebas
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: math-test-reports
+          path: |
+            shared/math-engine/build/reports/tests/
+            shared/math-remote/build/reports/tests/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Subir APK debug
+        uses: actions/upload-artifact@v7
+        with:
+          name: androidApp-debug
+          path: apps/androidApp/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14

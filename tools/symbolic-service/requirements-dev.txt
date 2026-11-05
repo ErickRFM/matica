@@ -1,0 +1,3 @@
+# Versiones instaladas y verificadas en la POC (2026-11-05).
+pytest==9.2.0
+httpx==0.28.1

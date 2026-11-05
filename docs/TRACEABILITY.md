@@ -15,16 +15,21 @@ Estados: `completo` (evidencia ejecutada) · `en progreso` · `parcial` · `pend
 | B0-07 | Documentación de arquitectura | P§17A | `docs/ARCHITECTURE.md` | completo | Revisión manual |
 | B0-08 | Blueprint leído | P§0 | — | bloqueado | Archivo inexistente en el entorno (búsqueda documentada) |
 | B0-09 | Tokens extraídos de Figma | P§0/§8 | design-system | bloqueado | Sin conector Figma; se definen tokens propios y se reconcilian después |
-| B1-01 | AST con expresiones tipadas | P§4 | `shared/math-engine` | en progreso | Pruebas de parser pendientes de ampliarse |
-| B1-02 | Parser rechaza sintaxis ambigua | P§4 | `…/parser` | pendiente | — |
-| B1-03 | Fracciones exactas (sin `Double`) | P§4 | `…/numeric/Rational` | parcial | 5 pruebas en `RationalTest` pasan; aún sin BigInt interno |
-| B1-04 | Validación de igualdades y transformaciones | P§4 | `…/equivalence` | pendiente | — |
-| B1-05 | Evaluación paso a paso de procedimientos | P§4 | `…/stepwise` | pendiente | — |
-| B1-06 | Distinguir error numérico de conceptual | P§4 | `…/erroranalysis` | pendiente | — |
-| B1-07 | Pistas progresivas sin revelar respuesta | P§4 | `…/hints` | pendiente | — |
-| B1-08 | Comprobación por sustitución | P§4 | `…/verify` | pendiente | — |
-| B1-09 | Casos especiales cubiertos por pruebas (div. por cero, dominio, raíces extrañas, signos, jerarquía, distribución, redondeo, unidades) | P§4 | `shared/math-engine` | pendiente | Tabla de casos en pruebas del motor |
-| B1-10 | Resultado indeterminado cuando no se puede verificar | P§4 | `…/equivalence` | pendiente | — |
+| B1-01 | AST con expresiones tipadas | P§4 | `shared/math-engine/…/ast` | completo | `ExprParserTest` (12), `poly.NormalizerTest` (12), `EvaluatorTest` (11) y `DomainRestrictionsTest` (7) en verde en `jvmTest` y `testAndroidHostTest` |
+| B1-02 | Parser rechaza sintaxis ambigua | P§4 | `…/parser` | completo | Casos `2 3`, `1.2.3`, `x = = 2`, `2(x+3`, `=14`, `2(x+3)=14=7` y `sen(x)` rechazados con posición y sugerencia |
+| B1-03 | Fracciones exactas (sin `Double`) | P§4 | `…/numeric/Rational` | completo | `RationalTest` (10): forma canónica, signe, `0.1+0.2 = 3/10`, potencias negativas, mcm |
+| B1-04 | Validación de igualdades y transformaciones | P§4 | `…/poly` + `…/analysis` | completo | Equivalencia por proporcionalidad de polinomios canónicos; `StepAnalyzerTest` (24) en verde: pasos válidos, errores de regla, veredictos indeterminados, problemas de sintaxis y restricciones de dominio |
+| B1-05 | Evaluación paso a paso de procedimientos | P§4 | `…/analysis/StepAnalyzer` | completo | `MathEngineTest.analizaElProblemaCompletoDelPromptPasoAPaso` recorre `2(x+3)=14 → 2x+6=14 → 2x=8 → x=4` |
+| B1-06 | Distinguir error numérico de conceptual | P§4 | `…/analysis` | completo | `1/3+1/6 → 2/9` se atribuye a jerarquía y `2+3*4 → 15` a aritmética; distribuir, signo, un solo lado, raíz perdida y extraña tienen veredicto propio |
+| B1-07 | Pistas progresivas sin revelar respuesta | P§4 | `…/hints` | completo | `HintProviderTest` (5): escalera CONCEPT/LOCATE/NAME_RULE sin_solution, `SHOW_LINE` solo a petición |
+| B1-08 | Comprobación por sustitución | P§4 | `…/verify` | completo | `SolutionVerifierTest` (6): satisface, no satisface, extrana por dominio, `Blocked` distinto de fallar |
+| B1-09 | Casos especiales cubiertos por pruebas | P§4 | `shared/math-engine` | parcial | Cubiertos: división por cero, dominio, raíces extrañas y perdidas, fracciones equivalentes, signos, jerarquía, distribución, decimales exactos. Falta **unidades** (requiere tipo de unidad en el AST, Bloque 2) |
+| B1-10 | Resultado indeterminado cuando no se puede verificar | P§4 | `…/analysis` | completo | `(x+1)/x = 2 → x+1 = 2` devuelve `Indeterminate`; el motor no acusa lo que no demuestra |
+| B1-11 | Contrato JSON versionado basado en AST tipado | P§4 + auditoría I (2026-11-05) | `…/contract` + `tools/symbolic-service` | completo | `SymbolicAstCodecTest` (11) en verde; la petición real nunca transporta texto matemático; una `contractVersion` distinta devuelve `invalidInput/contract_version` (verificado contra el servicio levantado) |
+| B1-12 | Prohibición de evaluar expresiones arbitrarias del usuario | auditoría I (2026-11-05) | `tools/symbolic-service/contract.py` | completo | 25 pruebas `pytest` en verde: lista cerrada de funciones, presupuestos de 256 nodos y 32 de profundidad y patrón `^[a-z][a-z0-9_]{0,7}$` para variables — idéntico en Kotlin y en Python. Rechazos verificados con 422: `{"kind":"eval"}` → `unknown_kind`, `gamma` → `func_not_allowed`, `muy_largo_nombre_inyectado` → `var_name` y `__import__('os')…` → `const_format` (la cadena nunca se analiza como expresión) |
+| B1-13 | Gateway Ktor sin duplicar la fachada `MathEngine` | auditoría I (2026-11-05) | `:shared:math-remote` | completo | `KtorSymbolicGatewayTest` (10) offline con MockEngine; un AST que no cabe en el contrato se bloquea antes de tocar la red (`peticiones = 0`) y un 422/503 se reporta como `TransportFailure`, nunca como veredicto matemático; `MathEngine` solo consulta lo remoto cuando el veredicto local es `Indeterminate` o `Blocked` |
+| B1-14 | Pruebas de equivalencia Kotlin↔SymPy (dominio, raíces perdidas y extrañas, indeterminados) | auditoría I (2026-11-05) | `shared/math-remote/src/jvmTest` | completo | `EquivalenciaKotlinSymPyTest` ejecutado contra `http://127.0.0.1:8099` (11 pasos + 7 ecuaciones); evidencia textual en `docs/evidence/equivalencia-kotlin-sympy-2026-11-05.txt` (copia registrada del informe que genera `shared/math-remote/build/reports/`, carpeta ignorada por Git). No corre en CI: sin `-Pmatica.symbolic.baseUrl` se declara no ejecutada |
+| B1-15 | Auditoría de reutilización de repositorios | solicitud explícita (2026-11-05) | `docs/DEPENDENCIES.md` | completo | KMath evaluado con su metadata pública y descartado (eliminado del catálogo); BigNum adoptado; de SymPy Gamma y Numbas se reutilizan mecanismos de diseño, no código |
 | B2-01 | Grafo de habilidades y prerrequisitos | P§6 | `shared/learning-engine` | pendiente | — |
 | B2-02 | Diagnóstico inicial | P§6 | `features/*` + backend | pendiente | — |
 | B2-03 | Plantillas parametrizadas de ejercicio | P§5 | `shared/exercises` | pendiente | — |
@@ -43,9 +48,11 @@ Estados: `completo` (evidencia ejecutada) · `en progreso` · `parcial` · `pend
 | B5-03 | FCM | P§13 | `apps/androidApp` | bloqueado | Sin `google-services.json` propio |
 | B6-01 | Herramientas de autoría y grupos | P§12 | `backend/curriculum` | pendiente | — |
 | B7-01 | APK debug instalable | P§11/§17 | `apps/androidApp` | completo | `androidApp-debug.apk` 14 MB generado |
-| B7-02 | Pruebas unitarias y de integración | P§16 | todos | en progreso | `jvmTest` verde; resto pendiente |
+| B7-02 | Pruebas unitarias y de integración | P§16 | todos | en progreso | Ejecutadas el 2026-11-05 con `--rerun-tasks` y `BUILD SUCCESSFUL`: 110 pruebas del motor en `jvmTest`, 110 en `testAndroidHostTest`, 11 de la fachada remota en `jvmTest` (10 de gateway + el contraste ejecutado contra el servicio), 10 en `testAndroidHostTest` y 25 `pytest` del servicio Python. Faltan integración del backend Ktor y pruebas Compose |
 | B7-03 | Instalación y captura en dispositivo real | P§17D | — | bloqueado | Ningún dispositivo/emulador conectado |
 | B7-04 | AAB release firmado | P§1/§7 | CI | bloqueado | Sin keystore ni credenciales |
-| G-01 | Rama dedicada y commits claros, CI verde antes de fusionar | P§15 | git | en progreso | Repo iniciado en `main`; rama de trabajo por bloque |
+| G-01 | Rama dedicada y commits claros, CI verde antes de fusionar | P§15 | git + `.github/workflows/ci.yml` | parcial | CI verificado en verde en la PR #1 (run 42043092148) con las tareas del motor y `assembleDebug`. `ci.yml` ahora además corre `:shared:math-remote:jvmTest` y `:shared:math-remote:testAndroidHostTest`; ese conjunto ya se validó en local con `--rerun-tasks`, pero todavía no tiene una ejecución en GitHub. Falta además la protección de rama `main`, decisión del propietario |
 
-Resumen honesto: de 44 requisitos verificados o creados, **7 completos**, **4 en progreso**, **4 bloqueados por recursos externos** y el resto pendientes. Ninguna función se declara terminada sin la evidencia indicada en la columna de validación.
+Resumen honesto: 46 requisitos rastreados — **21 completos** (evidencia ejecutada), **2 parciales** (B1-09 unidades, G-01 protección de rama y ejecución del CI ampliado), **1 en progreso** (B7-02), **6 bloqueados por recursos externos** (blueprint, Figma, PostgreSQL, FCM, dispositivo real, keystore de release) y **16 pendientes**. Ninguna función se declara terminada sin la evidencia indicada en la columna de validación.
+
+Sobre el Bloque 1: el motor Kotlin quedó cerrado con 110 pruebas por target y el cálculo ampliado con SymPy quedó como servicio auxiliar detrás del contrato `matica.symbolic.v1`. La única fila que necesita el servicio vivo es B1-14: no corre en CI y, sin `-Pmatica.symbolic.baseUrl`, se autodeclara «NO EJECUTADA» en lugar de dar un verde vacío.

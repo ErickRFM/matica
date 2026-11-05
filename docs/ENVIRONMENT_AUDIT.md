@@ -52,7 +52,7 @@ El prompt maestro exige no afirmar lecturas imposibles. Estas son las reales:
 
 ## 5. Decisiones de investigación de bibliotecas
 
-- **KMath** (`space.kscience:kmath-core`) última publicación **0.6.0**: ofrece estructuras y operaciones numéricas/álgebra, **no un sistema completo de álgebra simbólica**. El motor simbólico (AST, parser, equivalencia, transformaciones) es propio. KMath queda fuera del camino crítico hasta que exista una necesidad concreta; se registró en el catálogo para su evaluación.
+- **KMath** (`space.kscience:kmath-core`) última publicación **0.6.0**: ofrece estructuras y operaciones numéricas/álgebra, **no un sistema completo de álgebra simbólica**. El motor simbólico (AST, parser, equivalencia, transformaciones) es propio. KMath quedó fuera del camino crítico; se registró en el catálogo para su evaluación y **la auditoría de 2026-11-05 lo descartó y lo retiró del catálogo** (motivos y evidencia en `docs/DEPENDENCIES.md`, §3).
 - **BigNum multiplatform** (`com.ionspin.kotlin:bignum` 0.3.10): sí aporta `BigInteger`/`BigDecimal` multiplataforma; se usa como base de `Rational` exacto porque `java.math.BigInteger` no existe en targets no-JVM.
 - **Koin 4.2.2** ( compilado contra Kotlin 2.3.20) en lugar de Hilt: Hilt es exclusivo de Android y el prompt pide DI compartida entre targets KMP.
 - **SQLDelight 2.4.1**, **Ktor 3.6.1**, **kotlinx-coroutines 1.11.0**, **kotlinx-serialization 1.12.0**, **kotlinx-datetime 0.8.0**, **Compose Multiplatform 1.9.3**, **compose-bom 2026.09.00**, **navigation-compose 2.10.2**, **Turbine 1.2.1**, **JUnit 5 BOM 5.14.4** — versiones estables leídas de Maven Central/Google Maven el 2026-11-04.
