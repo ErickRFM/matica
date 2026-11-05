@@ -1,6 +1,6 @@
 # Arquitectura Mática
 
-Última actualización: 2026-11-05 (Bloque 1 + auditoría de reutilización fusionados en `main` con la PR #1 tras el CI en verde; el Bloque 2 —motor de aprendizaje— viaja en su propia PR y aún sin fusionar).
+Última actualización: 2026-11-05 (Bloque 1 + auditoría fusionados en `main` con la PR #1 tras el CI en verde. El Bloque 2 viaja apilado: motor de aprendizaje en la PR #3 y plantillas de ejercicio en la PR #4, aún sin fusionar).
 
 ## Principio rector
 
@@ -16,9 +16,10 @@ Orden de prioridad fijado por el prompt maestro, y usado para resolver conflicto
 | `:shared:math-engine` | KMP (`jvm` + `android`) | AST, parser, evaluación, racional exacto, equivalencia, transformaciones justificadas, análisis de error por paso, pistas, contrato `matica.symbolic.v1` y puerto `SymbolicGateway`. **Sin dependencias de red.** |
 | `:shared:math-remote` | KMP (`jvm` + `android`) | Adaptador Ktor del puerto: `symbolicHttpClient` + `KtorSymbolicGateway`. Aquí viven las dependencias de red; el motor no las ve. |
 | `:shared:learning-engine` | KMP (`jvm` + `android`) | Grafo de habilidades y prerrequisitos, nivel de dominio medible, escalonera de repaso espaciado y plan de estudio. Consume los veredictos de `:shared:math-engine`; **no calcula matemática**. |
+| `:shared:exercises` | KMP (`jvm` + `android`) | Plantillas parametrizadas y generador determinista por semilla. Escribe la ecuación desde su solución y solo emite lo que `MathEngine` relee, resuelve y verifica por sustitución. |
 | `tools/symbolic-service` | Python + FastAPI + SymPy | Servicio auxiliar aislado. Solo calcula lo que Kotlin no demuestra offline, sobre un AST tipado; nunca recibe texto del estudiante. |
 
-Previsto y todavía **no creado** (se crea con código funcional, nunca vacío): `shared/core/{common,models,networking,database}`, `shared/exercises`, `shared/gamification`, `shared/sync`, `shared/presentation`, `design-system`, `features/{onboarding,authentication,home,learning-path,lessons,practice,rewards,profile,classrooms}`, `backend/api`.
+Previsto y todavía **no creado** (se crea con código funcional, nunca vacío): `shared/core/{common,models,networking,database}`, `shared/gamification`, `shared/sync`, `shared/presentation`, `design-system`, `features/{onboarding,authentication,home,learning-path,lessons,practice,rewards,profile,classrooms}`, `backend/api`.
 
 ## Reglas de dependencias
 
@@ -26,7 +27,8 @@ Previsto y todavía **no creado** (se crea con código funcional, nunca vacío):
 2. Un módulo de dominio **no** importa `android.*` ni Compose. Esto es lo que hace posible iOS sin reescribir lógica; hoy se garantiza con `jvmTest` puros en el motor.
 3. Las UI solo consumen `StateFlow` de ViewModel + intentos; no acceden a repositorios directamente.
 4. El backend es la única fuente de verdad de progreso, recompensas y dominio verificado. El cliente puede mostrar estados optimistas, pero se reconcilian.
-5. `:shared:learning-engine` depende solo de `:shared:math-engine` y de `kotlinx-datetime`. No ve Ktor ni `android.*`: decide con veredictos ya demostrados y fechas, no con cálculos propios.
+5. `:shared:learning-engine` depende solo de `:shared:math-engine` y de `kotlinx-datetime`; `:shared:exercises` solo de `:shared:math-engine`. Ninguno ve Ktor ni `android.*`: deciden con veredictos ya demostrados, fechas y AST propios, no con cálculos inventados.
+6. La última palabra matemática siempre la tiene `MathEngine`: ni el generador de ejercicios ni el motor de aprendizaje definen si una igualdad es correcta. Ambos fallan y reportan el motivo cuando el motor no coincide.
 
 ## Modelo de datos y persistencia
 
@@ -96,6 +98,26 @@ matemático porque las emiten las reglas de transformación (`RuleId.skills`) y 
 - **`LearningEngine`** es la fachada de esta capa: perfiles inmutables, `record`/`recordAll` y `plan(profile, today)`
   que pone los repasos vencidos antes que el trabajo nuevo.
 
+## Plantillas de ejercicio (B2-03)
+
+Una plantilla no elige números al azar y reza: construye la ecuación **desde** la solución pedida, con
+AST tipado, y después el motor la comprueba.
+
+- `ParameterRange` declara el dominio de cada parámetro y `validateRanges` devuelve motivos legibles; un
+  parámetro ausente o fuera de rango se reporta, no se calla ni se lanza una excepción opaca.
+- Notación de libro de texto: `ExerciseAst` omite el coeficiente 1 (nada de `1x`), omite el sumando
+  constante nulo (nada de `x + 0`) y pone el signo en el operador del término, que es como el parser lo
+  analiza y como el estudiante lo lee.
+- Tres plantillas del MVP, cada una apuntando a una habilidad del grafo: `ax + b = c` (equilibrio),
+  `a(x + b) = c` (distribuir) y `(x + b)/d = a` con `d ≥ 2` (fracciones). Casos degenerados se rechazan
+  con nombre propio: `a = 0` anula la incógnita, `b = 0` deja un paréntesis vacío.
+- `ExerciseGenerator` es determinista en `(plantilla, semilla)`, así que el backend puede rehacer el
+  intento exacto que el dispositivo guardó. Usa un solo `Random` por sorteo: con uno por parámetro, dos
+  parámetros del mismo rango salieran gemelos.
+- Antes de emitir, el generador exige cuatro cosas al motor: relectura del texto, cero restricciones de
+  dominio, solución única igual a la guardada y sustitución satisfecha. Si la plantilla mintiera sobre su
+  respuesta, el resultado es `Rejected` con motivo — nunca un ejercicio con una clave falsa.
+
 ## Backend Ktor
 
 - REST versionado (`/v1/...`), contratos con kotlinx-serialization.
@@ -108,7 +130,7 @@ matemático porque las emiten las reglas de transformación (`RuleId.skills`) y 
 
 - Logs estructurados sin datos personales.
 - Pruebas: `kotlin-test` para reglas y motor, Turbine para flujos de estado, pruebas Compose para UI, `ktor-server-test-host` para la API, integración PostgreSQL real cuando el daemon de Docker o una instancia remota esté disponible.
-- CI: `.github/workflows/ci.yml` corre `jvmTest` y `testAndroidHostTest` de `:shared:math-engine`, `:shared:math-remote` y `:shared:learning-engine`, más `:apps:androidApp:assembleDebug` en `ubuntu-latest`, y publica el APK debug como artefacto. El contraste Kotlin↔SymPy **no** entra en CI: necesita el servicio Python levantado, y un verde que dependa de un motor no desplegado sería una señal falsa. Los jobs de `lint` y `backend:test` se añaden cuando exista código que cubrir; crear un paso vacío daría una señal de verde sin significado. Sin fusión a `main` con CI en rojo.
+- CI: `.github/workflows/ci.yml` corre `jvmTest` y `testAndroidHostTest` de `:shared:math-engine`, `:shared:math-remote`, `:shared:learning-engine` y `:shared:exercises`, más `:apps:androidApp:assembleDebug` en `ubuntu-latest`, y publica el APK debug como artefacto. El contraste Kotlin↔SymPy **no** entra en CI: necesita el servicio Python levantado, y un verde que dependa de un motor no desplegado sería una señal falsa. Los jobs de `lint` y `backend:test` se añaden cuando exista código que cubrir; crear un paso vacío daría una señal de verde sin significado. Sin fusión a `main` con CI en rojo.
 
 ## Pendientes de decisión justificada
 
