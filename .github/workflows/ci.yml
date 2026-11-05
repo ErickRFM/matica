@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   verify:
-    name: Motor matemático, aprendizaje y app Android
+    name: Motor matemático, aprendizaje, plantillas y app Android
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -48,6 +48,12 @@ jobs:
       - name: Pruebas del motor de aprendizaje (target Android, host)
         run: ./gradlew :shared:learning-engine:testAndroidHostTest --stacktrace
 
+      - name: Pruebas de las plantillas de ejercicio (JVM)
+        run: ./gradlew :shared:exercises:jvmTest --stacktrace
+
+      - name: Pruebas de las plantillas de ejercicio (target Android, host)
+        run: ./gradlew :shared:exercises:testAndroidHostTest --stacktrace
+
       - name: Compilar APK debug
         run: ./gradlew :apps:androidApp:assembleDebug --stacktrace
 
@@ -60,6 +66,7 @@ jobs:
             shared/math-engine/build/reports/tests/
             shared/math-remote/build/reports/tests/
             shared/learning-engine/build/reports/tests/
+            shared/exercises/build/reports/tests/
           if-no-files-found: ignore
           retention-days: 14
 
