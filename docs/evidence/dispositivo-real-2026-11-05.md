@@ -17,7 +17,9 @@
 
 - `adb install -r -t apps/androidApp/build/outputs/apk/debug/androidApp-debug.apk` → `Success`.
 - `adb shell am start -W -n mx.matica.debug/mx.matica.app.MainActivity` → `Status: ok`,
-  `TotalTime: 778` ms en frío.
+  `TotalTime: 778` ms en frío. Con el APK reconstruido después de añadir las dependencias de
+  instrumentación, el mismo comando devolvió `Status: ok` y `TotalTime: 938` ms. Son dos medidas,
+  no un promedio: el rango observado en este equipo es 778-938 ms.
 - La pantalla muestra `Mática` y `1/2 + 1/3 = 5/6`: el motor de racionales exactos funciona en
   hardware, no sólo en la JVM de las pruebas.
 
