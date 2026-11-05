@@ -1,6 +1,6 @@
 # Arquitectura Mática
 
-Última actualización: 2026-11-05 (Bloque 1 + auditoría de reutilización; el contraste Kotlin↔SymPy ya se ejecutó contra el servicio real).
+Última actualización: 2026-11-05 (Bloque 1 + auditoría de reutilización, fusionados en `main` con la PR #1 tras el CI en verde; el contraste Kotlin↔SymPy se ejecutó contra el servicio real).
 
 ## Principio rector
 
