@@ -70,6 +70,13 @@ contrato tipado.
 - El contrato no representa irracionales: `sympy` devuelve `sqrt(2)` y el adaptador lo declara
   `NotSupported`. Ampliar esto requiere decidir cómo se muestra y se valida una raíz irracional en la
   app, no solo añadir un campo al JSON.
+- `androidx.compose:compose-bom` y `org.jetbrains.compose` conviven sin duplicar clases: el APK pasa
+  `checkDebugDuplicateClasses` con `:design-system` trayendo Compose desde JetBrains.
+- `connectedDebugAndroidTest` puede devolver `BUILD SUCCESSFUL` sin haber ejecutado nada: en el POCO
+  X7 Pro el runner no instaló el APK de prueba (`INSTALL_FAILED_USER_RESTRICTED`) y aun así Gradle
+  cerró en verde con `tests="0"`. La evidencia es el XML de casos, nunca el código de salida.
+- HyperOS también niega `settings put secure` (`WRITE_SECURE_SETTINGS`); el modo noche se cambia con
+  `adb shell cmd uimode night no|yes`, que sí funciona y es reversible.
 
 ## 5. Cómo volver a evaluar una dependencia
 

@@ -109,6 +109,7 @@ delante del estudiante: la respuesta remera acompaña al veredicto offline, nunc
 
 - Logs estructurados sin datos personales.
 - Pruebas: `kotlin-test` para reglas y motor, Turbine para flujos de estado, pruebas Compose para UI, `ktor-server-test-host` para la API, integración PostgreSQL real cuando el daemon de Docker o una instancia remota esté disponible.
+- **Instrumentación Compose (`MaticaThemeRenderTest`)**: tres casos que capturan el dibujo con `captureToImage()` y comparan el píxel renderizado contra `colorScheme.surface` y `colorScheme.background`. No entran en CI: el runner de GitHub no tiene dispositivo y un paso que no instala el APK de prueba devuelve `BUILD SUCCESSFUL` con `tests="0"`. Se ejecutan contra el POCO X7 Pro (Android 16) o, cuando HyperOS bloquea la instalación del APK de prueba, contra el emulador. La evidencia se lee por XML de resultados, nunca por el código de salida.
 - CI: `.github/workflows/ci.yml` corre `:shared:math-engine:jvmTest`, `:shared:math-remote:jvmTest`, `:design-system:jvmTest`, los `testAndroidHostTest` de los tres módulos y `:apps:androidApp:assembleDebug` en `ubuntu-latest`, y publica el APK debug como artefacto. El contraste Kotlin↔SymPy **no** entra en CI: necesita el servicio Python levantado, y un verde que dependa de un motor no desplegado sería una señal falsa. Los jobs de `lint` y `backend:test` se añaden cuando exista código que cubrir; crear un paso vacío daría una señal de verde sin significado. Sin fusión a `main` con CI en rojo.
 
 ## Pendientes de decisión justificada
