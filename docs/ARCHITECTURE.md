@@ -1,6 +1,6 @@
 # Arquitectura Mática
 
-Última actualización: 2026-11-05 (Bloque 1 + auditoría de reutilización, fusionados en `main` con la PR #1 tras el CI en verde; el contraste Kotlin↔SymPy se ejecutó contra el servicio real).
+Última actualización: 2026-11-05 (Bloque 1 + auditoría de reutilización, fusionados en `main` con la PR #1 tras el CI en verde; el contraste Kotlin↔SymPy se ejecutó contra el servicio real. El Bloque 2 viaja en las PRs #3 y #4, sin fusionar. Esta rama abre el Bloque 3 con `:design-system`, partiendo de `main` y sin depender de esas dos PRs).
 
 ## Principio rector
 
@@ -15,9 +15,10 @@ Orden de prioridad fijado por el prompt maestro, y usado para resolver conflicto
 | `:apps:androidApp` | `com.android.application` + Compose | Shell Android: Activity, navegación, temas, wiring de DI. Sin lógica de dominio. |
 | `:shared:math-engine` | KMP (`jvm` + `android`) | AST, parser, evaluación, racional exacto, equivalencia, transformaciones justificadas, análisis de error por paso, pistas, contrato `matica.symbolic.v1` y puerto `SymbolicGateway`. **Sin dependencias de red.** |
 | `:shared:math-remote` | KMP (`jvm` + `android`) | Adaptador Ktor del puerto: `symbolicHttpClient` + `KtorSymbolicGateway`. Aquí viven las dependencias de red; el motor no las ve. |
+| `:design-system` | KMP (`jvm` + `android`) con Compose | Paleta cruda, contraste WCAG 2.2 medible, escala tipográfica, espaciado de 4 dp, radios y los dos `ColorScheme` + colores semánticos. No conoce pantallas ni dominio. |
 | `tools/symbolic-service` | Python + FastAPI + SymPy | Servicio auxiliar aislado. Solo calcula lo que Kotlin no demuestra offline, sobre un AST tipado; nunca recibe texto del estudiante. |
 
-Previsto y todavía **no creado** (se crea con código funcional, nunca vacío): `shared/core/{common,models,networking,database}`, `shared/learning-engine`, `shared/exercises`, `shared/gamification`, `shared/sync`, `shared/presentation`, `design-system`, `features/{onboarding,authentication,home,learning-path,lessons,practice,rewards,profile,classrooms}`, `backend/api`.
+Previsto y todavía **no creado** (se crea con código funcional, nunca vacío): `shared/core/{common,models,networking,database}`, `shared/learning-engine`, `shared/exercises`, `shared/gamification`, `shared/sync`, `shared/presentation`, `features/{onboarding,authentication,home,learning-path,lessons,practice,rewards,profile,classrooms}`, `backend/api`.
 
 ## Reglas de dependencias
 
@@ -69,6 +70,33 @@ delante del estudiante: la respuesta remera acompaña al veredicto offline, nunc
 - Límite asumido: el contrato Kotlin solo representa racionales exactos. Cuando SymPy devuelve `sqrt(2)`, el adaptador responde `NotSupported` en lugar de aproximar; una aproximación sería una mentira matemática.
 - Contraste ejecutado: `EquivalenciaKotlinSymPyTest` confronta 11 pasos y 7 ecuaciones con el servicio real y deja el informe en `docs/evidence/equivalencia-kotlin-sympy-2026-11-05.txt`. Ahí quedaron registrados los desacuerdos legítimos (SymPy no opina sobre identidades y contradicciones de una sola variable) y el sobrepropósito que el contraste obligó a corregir: `together(L - R)` colapsaba `(x²−4)/(x−2)` y tapaba el agujero `x ≠ 2`.
 
+## Sistema visual (B3-01)
+
+- `:design-system` es un módulo KMP (`jvm` + `android`) con Compose. La combinación
+  `com.android.kotlin.multiplatform.library` + `org.jetbrains.compose` se validó compilando
+  `compileKotlinJvm` y `compileAndroidMain` antes de escribir una sola línea de tokens, y la app
+  lo consume en el APK sin duplicar clases de Compose.
+- Cuatro capas, en este orden de abajo hacia arriba: `MaticaPalette` (color crudo),
+  `MaticaSemanticColors` (roles propios que Material 3 no modela: acierto, refuerzo, ruta,
+  ecuación), `MaticaLightColorScheme` / `MaticaDarkColorScheme` (roles Material 3) y `MaticaTheme`
+  (el único punto de entrada de las pantallas).
+- **El contraste es una medición, no una intención.** `Contrast` implementa WCAG 2.2 (luminancia
+  relativa y razón) en `commonMain`, y `ThemeContrast.kt` lista los 17 pares texto-sobre-fondo
+  que el tema expone. `ThemeTokensTest` exige AA (4.5:1) sobre los 17, en `jvmTest` y en
+  `testAndroidHostTest`. Las cifras están ancladas contra una implementación independiente
+  escrita en Python sobre los mismos hex: si una de las dos se mueve, la prueba falla.
+- Consecuencia real de medir: el violeta del diseño (`#9075EF`) **no** admite texto blanco
+  (3.51:1). Por eso el rol `secondary` del tema claro usa tinta oscura sobre tinte claro, y la
+  prueba `elVioletaDelDisenoNoAguantaTextoBlanco` deja documentado el motivo en el propio test.
+- `MaticaTheme` pasa siempre `colorScheme` explícito: el valor por defecto de Material 3 en
+  Android activa Material You y sustituiría la paleta medida por colores dinámicos del sistema.
+- Procedencia de cada token, sin fingir precisión que no tuvimos: los colores crudos y el
+  comportamiento general salen del render del Figma (`docs/evidence/figma-inspeccion-2026-11-05.md`);
+  los radios, la escala tipográfica y el espaciado son derivación propia, porque el archivo se
+  abrió en modo lectura anónimo y Dev Mode exige sesión. El tema oscuro no existe en el diseño.
+- La familia tipográfica es `FontFamily.Default`: el repo no trae binarios de fuente y bajarlas
+  rompería el build sin red. Cambiarla es una decisión de diseño, no de arquitectura.
+
 ## Backend Ktor
 
 - REST versionado (`/v1/...`), contratos con kotlinx-serialization.
@@ -81,7 +109,7 @@ delante del estudiante: la respuesta remera acompaña al veredicto offline, nunc
 
 - Logs estructurados sin datos personales.
 - Pruebas: `kotlin-test` para reglas y motor, Turbine para flujos de estado, pruebas Compose para UI, `ktor-server-test-host` para la API, integración PostgreSQL real cuando el daemon de Docker o una instancia remota esté disponible.
-- CI: `.github/workflows/ci.yml` corre `:shared:math-engine:jvmTest`, `:shared:math-remote:jvmTest`, `testAndroidHostTest` de ambos módulos y `:apps:androidApp:assembleDebug` en `ubuntu-latest`, y publica el APK debug como artefacto. El contraste Kotlin↔SymPy **no** entra en CI: necesita el servicio Python levantado, y un verde que dependa de un motor no desplegado sería una señal falsa. Los jobs de `lint` y `backend:test` se añaden cuando exista código que cubrir; crear un paso vacío daría una señal de verde sin significado. Sin fusión a `main` con CI en rojo.
+- CI: `.github/workflows/ci.yml` corre `:shared:math-engine:jvmTest`, `:shared:math-remote:jvmTest`, `:design-system:jvmTest`, los `testAndroidHostTest` de los tres módulos y `:apps:androidApp:assembleDebug` en `ubuntu-latest`, y publica el APK debug como artefacto. El contraste Kotlin↔SymPy **no** entra en CI: necesita el servicio Python levantado, y un verde que dependa de un motor no desplegado sería una señal falsa. Los jobs de `lint` y `backend:test` se añaden cuando exista código que cubrir; crear un paso vacío daría una señal de verde sin significado. Sin fusión a `main` con CI en rojo.
 
 ## Pendientes de decisión justificada
 

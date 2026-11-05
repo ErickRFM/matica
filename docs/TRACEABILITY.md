@@ -1,6 +1,6 @@
 # Matriz de trazabilidad — Mática
 
-Origen: `P` = prompt maestro Full Kotlin (2026-11-04) · `B` = blueprint (no disponible) · `F` = Figma (no inspeccionable) · `I` = investigación de entornos/repos.
+Origen: `P` = prompt maestro Full Kotlin (2026-11-04) · `B` = blueprint (no disponible) · `F` = Figma (inspeccionado en modo lectura anónimo; ver `docs/evidence/figma-inspeccion-2026-11-05.md`) · `I` = investigación de entornos/repos.
 
 Estados: `completo` (evidencia ejecutada) · `en progreso` · `parcial` · `pendiente` · `bloqueado` (depende de un recurso externo).
 
@@ -14,7 +14,7 @@ Estados: `completo` (evidencia ejecutada) · `en progreso` · `parcial` · `pend
 | B0-06 | Matriz de trazabilidad mantenida | P§0 | `docs/TRACEABILITY.md` | completo | Este archivo |
 | B0-07 | Documentación de arquitectura | P§17A | `docs/ARCHITECTURE.md` | completo | Revisión manual |
 | B0-08 | Blueprint leído | P§0 | — | bloqueado | Archivo inexistente en el entorno (búsqueda documentada) |
-| B0-09 | Tokens extraídos de Figma | P§0/§8 | design-system | bloqueado | Sin conector Figma; se definen tokens propios y se reconcilian después |
+| B0-09 | Tokens extraídos de Figma | P§0/§8 | `:design-system` | parcial | El archivo se abrió y se leyó: 13 nodos raíz, 6 pantallas `iPhone 16`, 5 componentes `Boton` y paleta muestreada por píxeles (`docs/evidence/figma-inspeccion-2026-11-05.md`). Faltan los valores exactos de radios, tipografía y espaciado: Dev Mode exige sesión. Tokens no exportables declarados como derivación propia en `docs/ARCHITECTURE.md` |
 | B1-01 | AST con expresiones tipadas | P§4 | `shared/math-engine/…/ast` | completo | `ExprParserTest` (12), `poly.NormalizerTest` (12), `EvaluatorTest` (11) y `DomainRestrictionsTest` (7) en verde en `jvmTest` y `testAndroidHostTest` |
 | B1-02 | Parser rechaza sintaxis ambigua | P§4 | `…/parser` | completo | Casos `2 3`, `1.2.3`, `x = = 2`, `2(x+3`, `=14`, `2(x+3)=14=7` y `sen(x)` rechazados con posición y sugerencia |
 | B1-03 | Fracciones exactas (sin `Double`) | P§4 | `…/numeric/Rational` | completo | `RationalTest` (10): forma canónica, signe, `0.1+0.2 = 3/10`, potencias negativas, mcm |
@@ -35,7 +35,7 @@ Estados: `completo` (evidencia ejecutada) · `en progreso` · `parcial` · `pend
 | B2-03 | Plantillas parametrizadas de ejercicio | P§5 | `shared/exercises` | pendiente | — |
 | B2-04 | Renderizador de ejercicios por tipo | P§5 | `features/lessons` | pendiente | — |
 | B2-05 | Repaso espaciado explicable | P§6 | `shared/learning-engine` | pendiente | — |
-| B3-01 | Sistema visual Compose y temas claro/oscuro | P§8 | `design-system` | pendiente | — |
+| B3-01 | Sistema visual Compose y temas claro/oscuro | P§8 | `:design-system` | completo | Módulo KMP con Compose creado tras verificar que `compileKotlinJvm` y `compileAndroidMain` compilan Material 3 dentro de `com.android.kotlin.multiplatform.library`. 14 pruebas por target (8 `ThemeTokensTest` + 6 `ContrastTest`) en verde en `jvmTest` y `testAndroidHostTest`: los 17 pares texto-fondo de ambos temas cumplen AA 4.5:1, medidos con la fórmula WCAG del módulo y anclados a una implementación Python independiente. `:apps:androidApp` ya usa `MaticaTheme` y el APK debug compila |
 | B3-02 | 18 pantallas conectadas con navegación real | P§8 | `features/*` | pendiente | — |
 | B3-03 | Estados carga/vacío/error/offline/éxito | P§8 | `features/*` | pendiente | — |
 | B3-04 | Accesibilidad y movimiento reducido | P§8 | `design-system` | pendiente | Auditoría en Bloque 7 |
@@ -53,6 +53,6 @@ Estados: `completo` (evidencia ejecutada) · `en progreso` · `parcial` · `pend
 | B7-04 | AAB release firmado | P§1/§7 | CI | bloqueado | Sin keystore ni credenciales |
 | G-01 | Rama dedicada y commits claros, CI verde antes de fusionar | P§15 | git + `.github/workflows/ci.yml` | completo | Bloque 1 en la rama dedicada `feat/bloque-1-math-engine` con 7 commits describibles. La PR #1 fusionó en `main` (`44e0b95`) **después** del CI en verde del run 42062744025, que ya incluía `:shared:math-remote:jvmTest` y `:shared:math-remote:testAndroidHostTest`. `main` sigue sin protección de rama en GitHub: el criterio se sostiene por convención y por revisión, decisión pendiente del propietario |
 
-Resumen honesto: 46 requisitos rastreados — **22 completos** (evidencia ejecutada), **1 parcial** (B1-09 unidades), **1 en progreso** (B7-02), **6 bloqueados por recursos externos** (blueprint, Figma, PostgreSQL, FCM, dispositivo real, keystore de release) y **16 pendientes**. Ninguna función se declara terminada sin la evidencia indicada en la columna de validación.
+Resumen honesto: 46 requisitos rastreados — **23 completos** (evidencia ejecutada), **2 parciales** (B1-09 unidades y B0-09 tokens de Figma), **1 en progreso** (B7-02), **5 bloqueados por recursos externos** (blueprint, PostgreSQL, FCM, dispositivo real, keystore de release) y **15 pendientes**. Ninguna función se declara terminada sin la evidencia indicada en la columna de validación.
 
 Sobre el Bloque 1: el motor Kotlin quedó cerrado con 110 pruebas por target y el cálculo ampliado con SymPy quedó como servicio auxiliar detrás del contrato `matica.symbolic.v1`. La única fila que necesita el servicio vivo es B1-14: no corre en CI y, sin `-Pmatica.symbolic.baseUrl`, se autodeclara «NO EJECUTADA» en lugar de dar un verde vacío.
