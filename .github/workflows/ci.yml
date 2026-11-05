@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -15,7 +16,9 @@ permissions:
 
 jobs:
   verify:
-    name: Motor matemático, sistema visual y app Android
+    # Nombre estable a propósito: la protección de `main` exige este check exacto.
+    # Añadir módulos no cambia el nombre, solo se agregan pasos.
+    name: Verificación Full Kotlin
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -42,6 +45,18 @@ jobs:
       - name: Pruebas de la fachada remota (target Android, host)
         run: ./gradlew :shared:math-remote:testAndroidHostTest --stacktrace
 
+      - name: Pruebas del motor de aprendizaje (JVM)
+        run: ./gradlew :shared:learning-engine:jvmTest --stacktrace
+
+      - name: Pruebas del motor de aprendizaje (target Android, host)
+        run: ./gradlew :shared:learning-engine:testAndroidHostTest --stacktrace
+
+      - name: Pruebas de las plantillas de ejercicio (JVM)
+        run: ./gradlew :shared:exercises:jvmTest --stacktrace
+
+      - name: Pruebas de las plantillas de ejercicio (target Android, host)
+        run: ./gradlew :shared:exercises:testAndroidHostTest --stacktrace
+
       - name: Pruebas del sistema visual (JVM)
         run: ./gradlew :design-system:jvmTest --stacktrace
 
@@ -59,6 +74,8 @@ jobs:
           path: |
             shared/math-engine/build/reports/tests/
             shared/math-remote/build/reports/tests/
+            shared/learning-engine/build/reports/tests/
+            shared/exercises/build/reports/tests/
             design-system/build/reports/tests/
           if-no-files-found: ignore
           retention-days: 14

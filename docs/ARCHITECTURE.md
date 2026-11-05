@@ -1,6 +1,6 @@
 # Arquitectura Mática
 
-Última actualización: 2026-11-05 (Bloque 1 + auditoría de reutilización, fusionados en `main` con la PR #1 tras el CI en verde; el contraste Kotlin↔SymPy se ejecutó contra el servicio real. El Bloque 2 viaja en las PRs #3 y #4, sin fusionar. Esta rama abre el Bloque 3 con `:design-system`, partiendo de `main` y sin depender de esas dos PRs).
+Última actualización: 2026-11-05 (Bloque 1 fusionado con la PR #1 y Bloque 2 con las PRs #3 y #4, ambas con el CI en verde antes del merge; el contraste Kotlin↔SymPy se ejecutó contra el servicio real. Esta rama abre el Bloque 3 con `:design-system` sobre un `main` que ya incluye el motor de aprendizaje y las plantillas de ejercicio).
 
 ## Principio rector
 
@@ -15,10 +15,12 @@ Orden de prioridad fijado por el prompt maestro, y usado para resolver conflicto
 | `:apps:androidApp` | `com.android.application` + Compose | Shell Android: Activity, navegación, temas, wiring de DI. Sin lógica de dominio. |
 | `:shared:math-engine` | KMP (`jvm` + `android`) | AST, parser, evaluación, racional exacto, equivalencia, transformaciones justificadas, análisis de error por paso, pistas, contrato `matica.symbolic.v1` y puerto `SymbolicGateway`. **Sin dependencias de red.** |
 | `:shared:math-remote` | KMP (`jvm` + `android`) | Adaptador Ktor del puerto: `symbolicHttpClient` + `KtorSymbolicGateway`. Aquí viven las dependencias de red; el motor no las ve. |
+| `:shared:learning-engine` | KMP (`jvm` + `android`) | Grafo de habilidades y prerrequisitos, nivel de dominio medible, escalonera de repaso espaciado y plan de estudio. Consume los veredictos de `:shared:math-engine`; **no calcula matemática**. |
+| `:shared:exercises` | KMP (`jvm` + `android`) | Plantillas parametrizadas y generador determinista por semilla. Escribe la ecuación desde su solución y solo emite lo que `MathEngine` relee, resuelve y verifica por sustitución. |
 | `:design-system` | KMP (`jvm` + `android`) con Compose | Paleta cruda, contraste WCAG 2.2 medible, escala tipográfica, espaciado de 4 dp, radios y los dos `ColorScheme` + colores semánticos. No conoce pantallas ni dominio. |
 | `tools/symbolic-service` | Python + FastAPI + SymPy | Servicio auxiliar aislado. Solo calcula lo que Kotlin no demuestra offline, sobre un AST tipado; nunca recibe texto del estudiante. |
 
-Previsto y todavía **no creado** (se crea con código funcional, nunca vacío): `shared/core/{common,models,networking,database}`, `shared/learning-engine`, `shared/exercises`, `shared/gamification`, `shared/sync`, `shared/presentation`, `features/{onboarding,authentication,home,learning-path,lessons,practice,rewards,profile,classrooms}`, `backend/api`.
+Previsto y todavía **no creado** (se crea con código funcional, nunca vacío): `shared/core/{common,models,networking,database}`, `shared/gamification`, `shared/sync`, `shared/presentation`, `features/{onboarding,authentication,home,learning-path,lessons,practice,rewards,profile,classrooms}`, `backend/api`.
 
 ## Reglas de dependencias
 
@@ -26,6 +28,8 @@ Previsto y todavía **no creado** (se crea con código funcional, nunca vacío):
 2. Un módulo de dominio **no** importa `android.*` ni Compose. Esto es lo que hace posible iOS sin reescribir lógica; hoy se garantiza con `jvmTest` puros en el motor.
 3. Las UI solo consumen `StateFlow` de ViewModel + intentos; no acceden a repositorios directamente.
 4. El backend es la única fuente de verdad de progreso, recompensas y dominio verificado. El cliente puede mostrar estados optimistas, pero se reconcilian.
+5. `:shared:learning-engine` depende solo de `:shared:math-engine` y de `kotlinx-datetime`; `:shared:exercises` solo de `:shared:math-engine`. Ninguno ve Ktor ni `android.*`: deciden con veredictos ya demostrados, fechas y AST propios, no con cálculos inventados.
+6. La última palabra matemática siempre la tiene `MathEngine`: ni el generador de ejercicios ni el motor de aprendizaje definen si una igualdad es correcta. Ambos fallan y reportan el motivo cuando el motor no coincide.
 
 ## Modelo de datos y persistencia
 
@@ -97,6 +101,51 @@ delante del estudiante: la respuesta remera acompaña al veredicto offline, nunc
 - La familia tipográfica es `FontFamily.Default`: el repo no trae binarios de fuente y bajarlas
   rompería el build sin red. Cambiarla es una decisión de diseño, no de arquitectura.
 
+## Motor de aprendizaje (Bloque 2)
+
+`SkillId` es el contrato estable: 15 habilidades con `id` y etiqueta en español, declaradas en el motor
+matemático porque las emiten las reglas de transformación (`RuleId.skills`) y los errores de paso.
+
+- **Grafo de prerrequisitos** (`SkillGraph` + `DefaultCurriculum`): DAG validado al construirse. Un autorrequisito
+  o un ciclo se rechazan con el camino exacto (`Cycle(path)`), nunca se limpian en silencio. El orden topológico es
+  determinista (Kahn con desempate por el orden de la enumeración), así que dos construcciones del mismo plan dan la
+  misma secuencia. `availableSkills(mastered)` es la frontera: nada se propone con un prerrequisito sin dominar, y
+  `pathTo` explica cuántos faltan y cuáles.
+- **Dominio medible** (`MasteryRules`): nivel `NOT_INTRODUCED → DEVELOPING → PROFICIENT → FLUENT` calculado sobre la
+  ventana de los últimos 8 intentos. Cada cambio lleva un motivo contable ("5 sin pista, 1 con pista, 2 incorrectas"),
+  y bajar de nivel usa las mismas dos evidencias incorrectas recientes que exigiría subir. No hay puntaje oculto.
+- **Repaso espaciado explicable** (`ReviewLadder` + `ReviewRules`): escalonera fija de 1, 3, 7, 14 y 30 días. Se aplica
+  el intervalo que la etapa actual ya ganó; un fallo devuelve a la etapa 0 y reprograma al día siguiente; un recuerdo
+  con pista repite etapa; intentar dos veces el mismo día no avanza. El motivo de cada decisión se devuelve junto al
+  estado.
+- **`atRisk` es una señal, no una sanción**: un vencido que supera su propio intervalo aparece en el plan y baja la
+  confianza, pero el nivel solo cambia con evidencia real.
+- **Evidencia sin inventar nada** (`EvidenceFromVerdict`): de `StepVerdict.Valid` sale una evidencia por habilidad de
+  la regla aplicada; de `Invalid`, la habilidad asociada al error concreto; de `Indeterminate` y `SyntaxProblem`,
+  ninguna. Un paso que el motor no pudo demostrar no puede contar como dominio.
+- **`LearningEngine`** es la fachada de esta capa: perfiles inmutables, `record`/`recordAll` y `plan(profile, today)`
+  que pone los repasos vencidos antes que el trabajo nuevo.
+
+## Plantillas de ejercicio (B2-03)
+
+Una plantilla no elige números al azar y reza: construye la ecuación **desde** la solución pedida, con
+AST tipado, y después el motor la comprueba.
+
+- `ParameterRange` declara el dominio de cada parámetro y `validateRanges` devuelve motivos legibles; un
+  parámetro ausente o fuera de rango se reporta, no se calla ni se lanza una excepción opaca.
+- Notación de libro de texto: `ExerciseAst` omite el coeficiente 1 (nada de `1x`), omite el sumando
+  constante nulo (nada de `x + 0`) y pone el signo en el operador del término, que es como el parser lo
+  analiza y como el estudiante lo lee.
+- Tres plantillas del MVP, cada una apuntando a una habilidad del grafo: `ax + b = c` (equilibrio),
+  `a(x + b) = c` (distribuir) y `(x + b)/d = a` con `d ≥ 2` (fracciones). Casos degenerados se rechazan
+  con nombre propio: `a = 0` anula la incógnita, `b = 0` deja un paréntesis vacío.
+- `ExerciseGenerator` es determinista en `(plantilla, semilla)`, así que el backend puede rehacer el
+  intento exacto que el dispositivo guardó. Usa un solo `Random` por sorteo: con uno por parámetro, dos
+  parámetros del mismo rango salieran gemelos.
+- Antes de emitir, el generador exige cuatro cosas al motor: relectura del texto, cero restricciones de
+  dominio, solución única igual a la guardada y sustitución satisfecha. Si la plantilla mintiera sobre su
+  respuesta, el resultado es `Rejected` con motivo — nunca un ejercicio con una clave falsa.
+
 ## Backend Ktor
 
 - REST versionado (`/v1/...`), contratos con kotlinx-serialization.
@@ -110,7 +159,7 @@ delante del estudiante: la respuesta remera acompaña al veredicto offline, nunc
 - Logs estructurados sin datos personales.
 - Pruebas: `kotlin-test` para reglas y motor, Turbine para flujos de estado, pruebas Compose para UI, `ktor-server-test-host` para la API, integración PostgreSQL real cuando el daemon de Docker o una instancia remota esté disponible.
 - **Instrumentación Compose (`MaticaThemeRenderTest`)**: tres casos que capturan el dibujo con `captureToImage()` y comparan el píxel renderizado contra `colorScheme.surface` y `colorScheme.background`. No entran en CI: el runner de GitHub no tiene dispositivo y un paso que no instala el APK de prueba devuelve `BUILD SUCCESSFUL` con `tests="0"`. Se ejecutan contra el POCO X7 Pro (Android 16) o, cuando HyperOS bloquea la instalación del APK de prueba, contra el emulador. La evidencia se lee por XML de resultados, nunca por el código de salida.
-- CI: `.github/workflows/ci.yml` corre `:shared:math-engine:jvmTest`, `:shared:math-remote:jvmTest`, `:design-system:jvmTest`, los `testAndroidHostTest` de los tres módulos y `:apps:androidApp:assembleDebug` en `ubuntu-latest`, y publica el APK debug como artefacto. El contraste Kotlin↔SymPy **no** entra en CI: necesita el servicio Python levantado, y un verde que dependa de un motor no desplegado sería una señal falsa. Los jobs de `lint` y `backend:test` se añaden cuando exista código que cubrir; crear un paso vacío daría una señal de verde sin significado. Sin fusión a `main` con CI en rojo.
+- CI: `.github/workflows/ci.yml` corre `jvmTest` y `testAndroidHostTest` de `:shared:math-engine`, `:shared:math-remote`, `:shared:learning-engine`, `:shared:exercises` y `:design-system`, más `:apps:androidApp:assembleDebug` en `ubuntu-latest`, y publica el APK debug como artefacto. El job se llama `Verificación Full Kotlin` y ese nombre es estable porque la protección de `main` lo exige; añadir módulos agrega pasos, no renombra el check. El contraste Kotlin↔SymPy **no** entra en CI: necesita el servicio Python levantado, y un verde que dependa de un motor no desplegado sería una señal falsa. Los jobs de `lint` y `backend:test` se añaden cuando exista código que cubrir; crear un paso vacío daría una señal de verde sin significado. Sin fusión a `main` con CI en rojo. Consecuencia operativa: el filtro de ramas se evalúa en `opened`, `synchronize`, `reopened`, `push` a `main` y `workflow_dispatch`, así que **toda PR se abre contra `main`** — una PR apilada sobre otra rama de trabajo no genera ningún check y no tendría evidencia que consultar.
 
 ## Pendientes de decisión justificada
 
