@@ -1,6 +1,6 @@
 # Arquitectura Mática
 
-Última actualización: 2026-11-05 (Bloque 1 + auditoría fusionados en `main` con la PR #1 tras el CI en verde. El Bloque 2 viaja apilado: motor de aprendizaje en la PR #3 y plantillas de ejercicio en la PR #4, aún sin fusionar).
+Última actualización: 2026-11-05 (Bloque 1 + auditoría fusionados en `main` con la PR #1 tras el CI en verde. El Bloque 2 viaja en dos PRs todavía sin fusionar: #3 (motor de aprendizaje) y #4 (plantillas de ejercicio); la #4 contiene los commits de la #3 porque nació apilada sobre ella).
 
 ## Principio rector
 
