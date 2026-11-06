@@ -22,3 +22,6 @@ __pycache__/
 *.pyc
 .pytest_cache/
 tmp-audit/
+
+# Worktrees locales de integración (AGENTS.md los fija aquí; nunca son contenido del repo)
+.worktrees/

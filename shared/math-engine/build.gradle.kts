@@ -25,7 +25,9 @@ kotlin {
         commonMain.dependencies {
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
-            implementation(libs.bignum)
+            // `api` y no `implementation`: Rational expone BigInteger en su constructor, en
+            // `numerator` y en `denominator`, así que el tipo es parte de la superficie pública.
+            api(libs.bignum)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
