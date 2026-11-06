@@ -12,13 +12,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -29,6 +32,7 @@ import mx.matica.design.motion.LocalMotionStyle
 import mx.matica.design.motion.MaticaMotion
 import mx.matica.design.theme.LocalMaticaDarkTheme
 import mx.matica.design.theme.MaticaColorPair
+import mx.matica.design.tokens.MaticaLayout
 import mx.matica.design.tokens.MaticaPalette
 import mx.matica.design.tokens.MaticaShapes
 import mx.matica.design.tokens.MaticaSpacing
@@ -101,7 +105,17 @@ fun MaticaButton(
             }
             .background(color = if (solidBackground) pair.background else Color.Transparent, shape = shape)
             .then(borderModifier)
-            .clickable(enabled = enabled, interactionSource = interaction, onClick = onClick),
+            .clip(shape)
+            // El único feedback que había era la escala de 0.97, y ésa se apaga con movimiento
+            // reducido: en un teléfono con «animaciones desactivadas» el botón no decía nada al
+            // tocarlo. El ripple es el feedback táctil que Material no considera movimiento
+            // decorativo, así que sigue ahí cuando el resto se queda quieto.
+            .clickable(
+                enabled = enabled,
+                interactionSource = interaction,
+                indication = ripple(color = pair.foreground),
+                onClick = onClick,
+            ),
         horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.sm, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -127,10 +141,29 @@ fun MaticaIconButton(
     modifier: Modifier = Modifier,
     tint: Color = MaterialTheme.colorScheme.onSurface,
 ) {
+    val motion = LocalMotionStyle.current
+    val interaction = remember { MutableInteractionSource() }
+    val pressed = interaction.collectIsPressedAsState().value
+    val scale by animateFloatAsState(
+        targetValue = if (pressed && !motion.reduced) 0.94f else 1f,
+        animationSpec = MaticaMotion.popSpec(motion),
+        label = "matica-icon-button-press",
+    )
     Box(
         modifier = modifier
-            .size(44.dp)
-            .clickable(onClick = onClick)
+            // 44 dp era el hueco que el dedo encontraba a medias: Material fija 48 como objetivo
+            // táctil mínimo y el botón de atrás es el más pulsado de la app.
+            .size(MaticaLayout.touchTarget)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(CircleShape)
+            .clickable(
+                interactionSource = interaction,
+                indication = ripple(color = tint),
+                onClick = onClick,
+            )
             .semantics { this.contentDescription = contentDescription },
         contentAlignment = Alignment.Center,
     ) {

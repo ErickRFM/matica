@@ -5,6 +5,8 @@ import androidx.compose.animation.core.snap
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -66,10 +68,17 @@ object MaticaChipPalette {
     fun measuredPairs(): List<MaticaColorPair> = listOf(streak, xp)
 }
 
+/**
+ * Título de apartado. Su sangría coincide con el texto que vive dentro de la tarjeta (16 del
+ * contenedor + 16 del relleno de la tarjeta), así que el título no queda flotando sobre el borde.
+ * No lleva relleno vertical: el ritmo lo ponen `MaticaSection` y el contenedor de la pantalla, y
+ * mientras este `Column` tuvo 8 dp por lado, la cabecera quedaba más lejos de su propia tarjeta
+ * (20 dp) que una tarjeta de la siguiente (12 dp): el agrupamiento salía invertido.
+ */
 @Composable
 fun MaticaSectionHeader(title: String, modifier: Modifier = Modifier, action: (@Composable () -> Unit)? = null) {
     Row(
-        modifier = modifier.fillMaxWidth().padding(horizontal = MaticaSpacing.lg, vertical = MaticaSpacing.sm),
+        modifier = modifier.fillMaxWidth().padding(horizontal = MaticaSpacing.lg),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
@@ -79,5 +88,22 @@ fun MaticaSectionHeader(title: String, modifier: Modifier = Modifier, action: (@
             color = MaterialTheme.colorScheme.onSurface,
         )
         action?.invoke()
+    }
+}
+
+/**
+ * Apartado: su título pegado a lo que titula, y el hueco entre apartados más amplio que el de
+ * dentro. Sin esta agrupación la jerarquía visual la sostenía sólo el tipo de letra.
+ */
+@Composable
+fun MaticaSection(
+    title: String,
+    modifier: Modifier = Modifier,
+    action: (@Composable () -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(MaticaSpacing.sm)) {
+        MaticaSectionHeader(title, action = action)
+        content()
     }
 }
