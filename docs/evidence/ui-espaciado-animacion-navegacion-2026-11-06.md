@@ -184,8 +184,62 @@ pantalla, así que el botón pintaba exactamente el color de lo que había detr�
 Tras reponer los dos fixes, batería completa otra vez: **41 instrumentados y 757 unitarios, 0 fallos**
 (`BUILD SUCCESSFUL in 1m 53s`, `tests="41" failures="0" errors="0"`).
 
+## Tercera tanda: el tema oscuro caminado pantalla por pantalla
+
+La caminata anterior se hizo en claro. Al recorrer las mismas rutas en oscuro apareció un defecto que
+ninguna captura en claro podía enseñar: **las barras del sistema no seguían el tema de la app**.
+
+- **Sonda** (`MaticaWindowInsetsTest.elTemaOscuroDeLaAppTambienCambiaLaAparicionDeLasBarrasDelSistema`):
+  navega Hoy → Ajustes → pulsa «Oscuro» y lee el flag real de la ventana con
+  `WindowInsetsControllerCompat`, dentro de la misma activity instrumentada. No se infiere de la
+  captura: se lee el dato que el sistema usa para pintar la hora y la batería. Con el fix ausente el
+  XML devolvió el mensaje leído del dispositivo:
+
+  ```
+  Con el tema de la app en «Oscuro» la ventana sigue declarando isAppearanceLightStatusBars=true:
+  los iconos del sistema se pintan para fondo claro y sobre la superficie oscura de la app desaparecen.
+  ```
+
+- **Causa**: `MainActivity` llama a `enableEdgeToEdge()` sin argumentos, que deja
+  `SystemBarStyle.auto`. `auto` obedece al ajuste **del sistema**, no a la opción que el estudiante
+  eligió dentro de la app, así que un móvil en claro con Mática en oscuro conservaba iconos oscuros
+  sobre `#0E1626`.
+- **Arreglo**: `MaticaSystemBarAppearance(dark)` en `design-system` como `expect`/`actual` (la misma
+  forma que ya usa `platformMotionScale`): el `actual` de Android escribe
+  `isAppearanceLightStatusBars` / `isAppearanceLightNavigationBars` en el `WindowInsetsControllerCompat`
+  desde un `SideEffect` de `MaticaTheme`, y el de JVM no hace nada. El módulo necesitó su primera
+  dependencia de Android (`androidx.core.ktx`, sólo para ese flag).
+- **Verde medido**: `MaticaWindowInsetsTest` con 4 casos, 0 fallos (`tests="4" failures="0"
+  errors="0"`, lectura de las 09:35). **Ojo con el alcance de esa lectura**: el XML de esa corrida ya no
+  está en disco — otro proceso del proyecto reinstaló la app sobre el emulador mientras se hacía la
+  caminata en oscuro y limpió los resultados — así que el número queda citado de la lectura del
+  momento y la repetición de la batería completa está anotada abajo como pendiente.
+
+### Lo que enseñan (y lo que no pueden enseñar) las capturas en oscuro
+
+`31-oscuro-bienvenida`, `32-oscuro-diagnostico`, `33-oscuro-hoy`, `34-oscuro-ruta`,
+`35-oscuro-lecciones`, `36-oscuro-reproductor`, `38-oscuro-logros`, `39-oscuro-perfil`,
+`40-oscuro-ajustes` en `C:/Users/erik5/AppData/Local/Temp/matica-shots/`.
+
+Están tomadas con el sistema en modo noche y `Tema = Sistema`, así que **no aíslan el arreglo**: en esa
+configuración `SystemBarStyle.auto` también pintaría los iconos claros. Lo que sí queda demostrado en
+ellas es el resto del oscuro — contraste de las insignias, superficie propia de la opción de grado sin
+elegir, la fila única de contadores en Logros y «Mi perfil» reachable desde los accesos — y la
+aclaración del flag la sostiene la prueba instrumentada, que es la que pone la app en oscuro
+independientemente del sistema.
+
+Falta `37-oscuro-hoja-pistas`: al pulsar «Pista» el proceso concurrente reinstaló el APK y la caminata
+salió al launcher. No se documenta como hecha.
+
 ## Pendiente y bloqueado (no fingido como hecho)
 
+- **Repetir la batería completa con el arreglo de barras puesto**: la tanda de las 41 instrumentadas se
+  corrió antes de `MaticaSystemBarAppearance`. Hay que volver a correr
+  `./gradlew allTests :apps:androidApp:connectedDebugAndroidTest` y, para que la prueba de barras sea
+  realmente aisladora, con el sistema en claro (`cmd uimode night no`). Bloqueado mientras otro proceso
+  del proyecto tenga el emulador: instalar dos veces el mismo APK en mitad de una caminata invalida
+  todas las capturas.
+- **La hoja de pistas en oscuro** (`37`), sin captura por el motivo de arriba.
 - **Uno de los siete fixes de la caminata sigue sin aserción**: el peso del párrafo de estrategia (4).
   Grado (3) e insignias duplicadas (5) se midieron en el dispositivo en la misma tarde, así que ya no
   dependen de la captura. Lo del párrafo no se convirtió en prueba porque la API de semántica de
@@ -193,7 +247,8 @@ Tras reponer los dos fixes, batería completa otra vez: **41 instrumentados y 75
   Medirlo obligaría a inferir la cuerpo por altura de tinta en la captura, y una aserción así se cae
   con cualquier cambio de escala de fuente. Queda sostenida por `19-practica-tipografia.png` y por la
   convención escrita en `docs/ARCHITECTURE.md`.
-- **Las 23 capturas no viven en el repositorio**: quedaron en
+- **Las capturas no viven en el repositorio**: las 23 de la tanda en claro más las 9 en oscuro
+  (`31`–`36`, `38`–`40`) quedaron en
   `C:/Users/erik5/AppData/Local/Temp/matica-shots/` (borrador de la sesión), igual que las de Figma.
   Son evidencia de una fecha, no un archivo controlado por Git.
 - **Tableta real y doble columna**: el tope de 640 dp y su centrado están medidos en un viewport

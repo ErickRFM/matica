@@ -30,6 +30,11 @@ kotlin {
             implementation(compose.material3)
             implementation(compose.animation)
         }
+        // Sólo para escribir el flag de «fondo claro» de las barras del sistema; el resto del módulo
+        // no toca Android.
+        androidMain.dependencies {
+            implementation(libs.androidx.core.ktx)
+        }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
         }

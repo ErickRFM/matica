@@ -36,6 +36,7 @@ fun MaticaTheme(
     val semantic = if (darkTheme) MaticaSemanticColors.Dark else MaticaSemanticColors.Light
     val scheme = if (darkTheme) MaticaDarkColorScheme else MaticaLightColorScheme
     val motion = MotionStyle(motionScale ?: platformMotionScale())
+    MaticaSystemBarAppearance(darkTheme)
     CompositionLocalProvider(
         LocalMaticaSemanticColors provides semantic,
         LocalMaticaDarkTheme provides darkTheme,

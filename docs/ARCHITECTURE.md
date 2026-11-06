@@ -117,7 +117,7 @@ delante del estudiante: la respuesta remera acompaña al veredicto offline, nunc
 
 ### Convenciones de la capa de pantalla (`:shared:presentation`)
 
-Cuatro reglas que nacieron de defectos medidos en el dispositivo el 2026-11-06, no de preferencias.
+Reglas que nacieron de defectos medidos en el dispositivo el 2026-11-06, no de preferencias.
 Cada una tiene su prueba o su captura en `docs/evidence/ui-espaciado-animacion-navegacion-2026-11-06.md`.
 
 - **Un componente del sistema aplica siempre el `modifier` que le pasa el llamador, y lo aplica
@@ -146,6 +146,14 @@ Cada una tiene su prueba o su captura en `docs/evidence/ui-espaciado-animacion-n
   montando la ruta a mano y convivía verde con la ausencia total de acceso, lo que hacía inalcanzable
   el reinicio del perfil local. `MaticaScreenInventoryTest` prueba destinos; la accesibilidad del
   destino la prueba un camino recorrido desde Hoy (`desdeHoySePuedeAbrirElPerfilLocal`).
+- **La aparición de las barras del sistema la decide el tema efectivo de la app, no el del sistema.**
+  `enableEdgeToEdge()` sin argumentos deja `SystemBarStyle.auto`, que sigue el ajuste del sistema: con
+  el móvil en claro y Mática en «Oscuro» los iconos se pintaban para fondo claro sobre `#0E1626` y
+  desaparecían. `MaticaTheme` llama a `MaticaSystemBarAppearance(darkTheme)` — `expect`/`actual` como
+  `platformMotionScale`, con el `actual` de JVM vacío — y escribe los dos flags del
+  `WindowInsetsControllerCompat` desde un `SideEffect`. Por eso `:design-system` tiene una dependencia
+  de `androidx.core` **sólo** en `androidMain`: si alguien vuelve a dejar el control en `auto`, la
+  prueba que lo mide es `MaticaWindowInsetsTest.elTemaOscuroDeLaAppTambienCambiaLaAparicionDeLasBarrasDelSistema`.
 
 ## Motor de aprendizaje (Bloque 2)
 

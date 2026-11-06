@@ -32,6 +32,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlin.test.assertTrue
 import org.junit.Rule
@@ -89,6 +90,31 @@ class MaticaWindowInsetsTest {
             fondo <= limiteInferior,
             "La última acción de la pantalla de bienvenida terminó en y=$fondo dentro de una ventana de " +
                 "$ventana px: el contenido sigue metido bajo la barra de navegación del sistema.",
+        )
+    }
+
+    @Test
+    fun elTemaOscuroDeLaAppTambienCambiaLaAparicionDeLasBarrasDelSistema() {
+        rule.waitForIdle()
+        pulsar("Explorar la ruta sin diagnóstico")
+        rule.onNodeWithText("Abrir mi ruta").assertIsDisplayed()
+        pulsar("Ajustes")
+        pulsar("Oscuro")
+
+        // `enableEdgeToEdge()` sin argumentos deja `SystemBarStyle.auto`, que mira el ajuste del
+        // sistema, no el tema que el estudiante eligió dentro de la app. Sobre un emulador en claro,
+        // poner la app en oscuro deja la hora y la batería pintadas en gris casi negro sobre #0E1626.
+        val control = WindowInsetsControllerCompat(rule.activity.window, rule.activity.window.decorView)
+        assertTrue(
+            !control.isAppearanceLightStatusBars,
+            "Con el tema de la app en «Oscuro» la ventana sigue declarando " +
+                "isAppearanceLightStatusBars=" + control.isAppearanceLightStatusBars + ": los iconos del " +
+                "sistema se pintan para fondo claro y sobre la superficie oscura de la app desaparecen.",
+        )
+        assertTrue(
+            !control.isAppearanceLightNavigationBars,
+            "Con el tema de la app en «Oscuro» la barra de navegación sigue declarando " +
+                "isAppearanceLightNavigationBars=" + control.isAppearanceLightNavigationBars + ".",
         )
     }
 
