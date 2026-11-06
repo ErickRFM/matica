@@ -2,8 +2,8 @@
 
 ## Estado verificado
 - El APK mantiene matemáticas/ejercicios locales; la cuenta sigue desactivada hasta tener Auth real.
-- Backend `:backend:api`: `GET /readyz`, `GET /readyz`, `GET /v1/topics`. El catálogo sirve temas sin grados escolares.
-- `/readyz` significa que responde el proceso; **no** certifica Postgres. `/readyz` devuelve 503 sin acceso JDBC.
+- Backend `:backend:api`: `GET /healthz`, `GET /readyz`, `GET /v1/topics`. El catálogo sirve temas sin grados escolares.
+- `/healthz` significa que responde el proceso; **no** certifica Postgres. `/readyz` devuelve 503 sin acceso JDBC.
 - No existen aún endpoints de escritura, recompensas, sincronización ni login. No simular que existen.
 - Un Render existente (`matica-symbolic-staging`) es **auxiliar SymPy**. No es este backend y no se debe sustituir.
 
@@ -13,7 +13,7 @@
 | --- | --- | --- |
 | Render API (secreto) | `DATABASE_URL` | URL interna PostgreSQL de una base dedicada a Mática. No poner en Git/Android |
 | Render API (automática) | `PORT` | Render la asigna; localmente usa 10000 |
-| Android (pública, build) | `MATICA_API_BASE_URL` | URL HTTPS de tu servicio API, sin `/readyz`, p.ej. `https://matica-api-staging.onrender.com` |
+| Android (pública, build) | `MATICA_API_BASE_URL` | URL HTTPS de tu servicio API, sin ruta de endpoint, p.ej. `https://matica-api-staging.onrender.com` |
 | Gradle (alternativa a env) | `matica.api.baseUrl` | Misma URL pública con `-Pmatica.api.baseUrl=...` |
 
 En Android sólo hay una sonda HTTPS anónima a `/readyz`; ningún secreto viaja en la app.
