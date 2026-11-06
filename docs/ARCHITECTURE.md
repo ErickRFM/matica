@@ -115,6 +115,38 @@ delante del estudiante: la respuesta remera acompaña al veredicto offline, nunc
 - La familia tipográfica es `FontFamily.Default`: el repo no trae binarios de fuente y bajarlas
   rompería el build sin red. Cambiarla es una decisión de diseño, no de arquitectura.
 
+### Convenciones de la capa de pantalla (`:shared:presentation`)
+
+Cuatro reglas que nacieron de defectos medidos en el dispositivo el 2026-11-06, no de preferencias.
+Cada una tiene su prueba o su captura en `docs/evidence/ui-espaciado-animacion-navegacion-2026-11-06.md`.
+
+- **Un componente del sistema aplica siempre el `modifier` que le pasa el llamador, y lo aplica
+  primero.** `MaticaButton` construía su propio ancho desde cero e ignoraba el `modifier`, así que el
+  `weight(1f)` de las filas de opciones se perdía: los cuatro botones se repartían el ancho por su
+  contenido y la última etiqueta se escribía una letra por renglón a 392,72 dp. La cadena correcta es
+  `modifier.then(widthModifier).heightIn(...)...`; posponer el `modifier` del llamador vuelve a
+  producir el mismo fallo.
+- **Dentro de una `MaticaCard` la variante es `OUTLINE`, nunca `NEUTRAL`.** El relleno del neutro en
+  claro es `BlueMist`, y `BlueMist` es también el `surfaceVariant` con el que `MaticaCard` se pinta:
+  el botón queda sin fondo ni borde sobre su propia tarjeta. `OUTLINE` existe precisamente para ese
+  fondo («borde sobre tarjeta»). Es una colisión de tokens, no un mal uso del color: si se añade otra
+  variante cuyo fondo coincida con `surfaceVariant`, el mismo defecto reaparece.
+- **Las rutas modales se dibujan como hoja opaca anclada abajo, no encima de la pantalla base.**
+  `HintSheet` ocupa el 78 % inferior sobre una `Surface` con el radio del sistema; la franja de arriba
+  sigue siendo scrim tocable. Pintar la ruta transparente sobre la base superpone las dos cabeceras en
+  la misma coordenada y deja ver el contenido de abajo a través de los huecos de las tarjetas.
+- **Una fila de cuatro etiquetas no cabe a 392 dp: se parte en dos filas de dos.** Cada pastilla
+  necesita ~103 dp (etiqueta + 24 de relleno por lado) y el teléfono deja ~90 por celda. Lo mismo con
+  tres opciones largas («2.º de secundaria» pide ~150 dp contra ~116 disponibles). La altura máxima por
+  etiqueta (≤ 56 dp) la sostiene `MaticaLayoutMetricsTest`.
+- **El párrafo va en `bodyLarge` y el titular en `titleMedium`.** `strategyEs` medía dos líneas con
+  peso de titular por encima de la propia ecuación; el peso tipográfico se usa para jerarquía, no para
+  énfasis decorativo.
+- **Toda ruta alcanzable tiene que tener una entrada en la UI.** `MaticaRoute.Profile` se probaba
+  montando la ruta a mano y convivía verde con la ausencia total de acceso, lo que hacía inalcanzable
+  el reinicio del perfil local. `MaticaScreenInventoryTest` prueba destinos; la accesibilidad del
+  destino la prueba un camino recorrido desde Hoy (`desdeHoySePuedeAbrirElPerfilLocal`).
+
 ## Motor de aprendizaje (Bloque 2)
 
 `SkillId` es el contrato estable: 15 habilidades con `id` y etiqueta en español, declaradas en el motor
@@ -172,7 +204,7 @@ AST tipado, y después el motor la comprueba.
 
 - Logs estructurados sin datos personales.
 - Pruebas: `kotlin-test` para reglas y motor, Turbine para flujos de estado, pruebas Compose para UI, `ktor-server-test-host` para la API, integración PostgreSQL real cuando el daemon de Docker o una instancia remota esté disponible.
-- **Instrumentación Compose**: nueve clases (`MaticaThemeRenderTest`, `MaticaAppUiTest`, `MaticaScreenInventoryTest`, `MaticaNavigatorRestoreTest`, `MaticaStateViewsTest`, `MaticaMotionTest`, `MaticaMathComponentsTest`, `MaticaWindowInsetsTest`, `MaticaLayoutMetricsTest`) con 35 casos ejecutados el 2026-11-06 sobre `companero_v12_qa_20261009(AVD) - 11` (`tests="35" failures="0" errors="0"`), incluidas las tres capturas con `captureToImage()` que comparan el píxel renderizado contra `colorScheme.surface` y `colorScheme.background`, las tres pruebas que leen `ViewCompat.getRootWindowInsets` de la ventana real y las cuatro que comparan rectángulos en píxeles contra los tokens de `MaticaLayout`. No entran en CI: el runner de GitHub no tiene dispositivo y un paso que no instala el APK de prueba devuelve `BUILD SUCCESSFUL` con `tests="0"`. Se ejecutan a mano y su evidencia se lee por XML de resultados, nunca por el código de salida. Tres lecciones de método quedaron fijadas aquí: **la rotación no puede probarse montando el contenido desde la prueba** (el `setContent` del test no forma parte del `savedInstanceState`; hay que recrear `MainActivity`, el host real que llama a `rememberMaticaNavigator`), **un `assertIsDisplayed` sobre un elemento con `contentDescription` combinada da falso negativo** (se consulta `substring` o se lee el nodo por su texto interno) y **una ventana ancha no se simula con `width`/`requiredWidth` dentro de la ventana de un teléfono** (ambos se recortan contra el máximo heredado y `boundsInWindow` recorta además al área visible; la medida honesta es girar la actividad y verificar primero que el área de composición supera de verdad el tope).
+- **Instrumentación Compose**: nueve clases (`MaticaThemeRenderTest`, `MaticaAppUiTest`, `MaticaScreenInventoryTest`, `MaticaNavigatorRestoreTest`, `MaticaStateViewsTest`, `MaticaMotionTest`, `MaticaMathComponentsTest`, `MaticaWindowInsetsTest`, `MaticaLayoutMetricsTest`) con 39 casos ejecutados el 2026-11-06 sobre `companero_v12_qa_20261009(AVD) - 11` (`tests="39" failures="0" errors="0"`), incluidas las tres capturas con `captureToImage()` que comparan el píxel renderizado contra `colorScheme.surface` y `colorScheme.background`, las tres pruebas que leen `ViewCompat.getRootWindowInsets` de la ventana real y las cuatro que comparan rectángulos en píxeles contra los tokens de `MaticaLayout`. No entran en CI: el runner de GitHub no tiene dispositivo y un paso que no instala el APK de prueba devuelve `BUILD SUCCESSFUL` con `tests="0"`. Se ejecutan a mano y su evidencia se lee por XML de resultados, nunca por el código de salida. Cinco lecciones de método quedaron fijadas aquí: **la rotación no puede probarse montando el contenido desde la prueba** (el `setContent` del test no forma parte del `savedInstanceState`; hay que recrear `MainActivity`, el host real que llama a `rememberMaticaNavigator`), **un `assertIsDisplayed` sobre un elemento con `contentDescription` combinada da falso negativo** (se consulta `substring` o se lee el nodo por su texto interno), **una ventana ancha no se simula con `width`/`requiredWidth` dentro de la ventana de un teléfono** (ambos se recortan contra el máximo heredado y `boundsInWindow` recorta además al área visible; la medida honesta es girar la actividad y verificar primero que el área de composición supera de verdad el tope), **para medir el rectángulo de un botón hay que pedir el nodo clicable** (`hasText(opción)` solo devuelve el nodo de texto, cuyo bounds no coincide con el del botón; la selección honesta es `hasText(opción) and hasClickAction()`) y **una aserción nueva no vale nada si pasa con el defecto puesto**: las dos pruebas de la caminata se corrieron con el fix revertido — la hoja transparente devolvió «El título «Pistas» arranca en y=185.0 dentro de una zona de 2063.0 px» y la variante dentro de tarjeta devolvió `tests="9" failures="1"` — y sólo se dio por buena la aserción después de verla fallar por el motivo escrito.
 - **Cómo entra un número escrito por el estudiante**: `parseNumber` (`shared/presentation/app/MaticaScreenSupport.kt`) evalúa la expresión constante con `MathEngine` en lugar de mirar la forma del AST. El motor conserva la forma tal como se escribió — `-9` es `Neg(Const(9))` y `3/4` es un cociente, no `Const(-9)` ni `Const(3/4)` — así que aceptar sólo `Expr.Const` devolvía `null` para los mismos formatos que la propia pantalla promete aceptar, y el marcador de la recta numérica volvía a la solución sin avisar (las flechas parecían muertas). La puerta sigue siendo estrecha a propósito: variables, ecuaciones, magnitudes con unidad y divisiones por cero siguen dando `null`; lo que cambió es que un número negativo o una fracción ya son un número.
 - **Las plantillas que la ruta acepta se derivan del currículo**: `MaticaRoute.KNOWN_TEMPLATES` (`shared/presentation/route/MaticaRoute.kt`) se construye con `ExerciseTemplates.all.mapTo(LinkedHashSet()) { it.id }`. La lista escrita a mano funcionó hasta que el currículo añadió `integer-ops`: la plantilla tenía plan, se dibujaba en las lecciones y sin embargo `practice/integer-ops/<semilla>` se rechazaba, así que ni un enlace profundo ni «Practicar sin grupo» podían abrirla. El invariante `lasPlantillasConocidasSonLasDelCatalogo` en `MaticaRouteTest` es lo que impide que la separación vuelva a ocurrir en silencio; la dirección de dependencia sigue siendo la misma (`presentation` ya consumía `:shared:exercises` para el plan de render).
 - **El `content` de `MaticaStateView` es sólo para `Success`**: las otras variantes pintan su mensaje y punto, así que cualquier UI que deba verse siempre —incluido un formulario desactivado que explica el bloqueo— va como **hermana** del contenedor, no dentro de su `content`. `LoginScreen` y `ClassroomScreen` lo violaban y sus campos desactivados no se componían nunca; `losServiciosBloqueadosMuestranSuFormularioDesactivado` es el test que lo impide.
