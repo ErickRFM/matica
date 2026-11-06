@@ -5,6 +5,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasAnySibling
@@ -16,6 +19,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlin.math.abs
@@ -297,6 +301,29 @@ class MaticaAppUiTest {
             rule.onNodeWithText(etiqueta).assertIsDisplayed()
             rule.onNodeWithText(aviso).assertIsDisplayed()
         }
+    }
+
+    /**
+     * El login no puede parecer un formulario roto: la pantalla tiene que decir en voz alta que las
+     * cuentas aún no existen y que los dos campos están desactivados a propósito. El encabezado es
+     * semántico porque es el título real de la pantalla, no un texto grande cualquiera.
+     */
+    @Test
+    fun elLoginExplicaQueLasCuentasEstanEnPreparacion() {
+        rule.setContent { MaticaApp(session = session(), navigator = MaticaNavigator(MaticaRoute.Login)) }
+        rule.waitForIdle()
+
+        rule.onNode(
+            hasText("Entra a tu cuenta") and
+                SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading),
+        ).assertIsDisplayed()
+        rule.onNodeWithText("Cuentas en preparación").assertIsDisplayed()
+        rule.onNodeWithText("Correo de la escuela").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Contraseña").performScrollTo().assertIsDisplayed()
+        // Las etiquetas son nodos de texto sueltos; el estado desactivado vive en los dos campos.
+        rule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.Disabled)).assertCountEquals(2)
+        rule.onNodeWithText("Desactivado hasta que exista el servicio.").assertIsDisplayed()
+        rule.onNodeWithText("Seguir con perfil local").performScrollTo().assertIsDisplayed()
     }
 
     private fun cornerPixel(): Int =

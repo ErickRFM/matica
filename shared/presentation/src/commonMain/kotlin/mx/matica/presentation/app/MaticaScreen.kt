@@ -37,6 +37,8 @@ import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -157,8 +159,10 @@ fun MaticaField(
     placeholder: String? = null,
     keyboard: KeyboardType = KeyboardType.Text,
     error: String? = null,
+    hint: String? = null,
     enabled: Boolean = true,
 ) {
+    val supporting = error ?: hint
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(MaticaSpacing.xs)) {
         Text(
             text = label,
@@ -175,23 +179,36 @@ fun MaticaField(
             enabled = enabled,
             shape = MaticaShapes.shapes.medium,
             keyboardOptions = KeyboardOptions(keyboardType = keyboard),
+            // La contraseña se enmascara por el tipo de teclado y no por una bandera aparte: así no
+            // existe un campo de contraseña que se pueda escribir en claro olvidando el segundo flag.
+            visualTransformation = if (keyboard == KeyboardType.Password) {
+                PasswordVisualTransformation()
+            } else {
+                VisualTransformation.None
+            },
             colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = MaterialTheme.colorScheme.primary,
                 unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
                 disabledBorderColor = MaterialTheme.colorScheme.outlineVariant,
             ),
         )
-        // El mensaje de validación se despliega en vez de aparecer de golpe: si no, la fila de abajo
-        // salta de sitio sin que el estudiante vea de dónde salió. Con movimiento reducido la
-        // duración es 0 ms y el cambio vuelve a ser instantáneo, no más brusco.
+        // El aviso se despliega en vez de aparecer de golpe: si no, la fila de abajo salta de sitio
+        // sin que el estudiante vea de dónde salió. Con movimiento reducido la duración es 0 ms y el
+        // cambio vuelve a ser instantáneo, no más brusco.
         val motion = LocalMotionStyle.current
         val ms = motion.ms(MaticaMotion.durations.short)
         AnimatedVisibility(
-            visible = error != null,
+            visible = supporting != null,
             enter = expandVertically(tween(ms), expandFrom = Alignment.Top) + fadeIn(tween(ms)),
             exit = shrinkVertically(tween(ms)) + fadeOut(tween(ms)),
         ) {
-            Text(text = error.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            Text(
+                // `hint` es un aviso, no un error: el servicio bloqueado se explica en el color del
+                // texto secundario. Pintarlo de rojo hacía que una pantalla informativa pareciera rota.
+                text = supporting.orEmpty(),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

@@ -1,17 +1,42 @@
 package mx.matica.presentation.app
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import mx.matica.design.brand.MaticaMark
+import mx.matica.design.motion.LocalMotionStyle
+import mx.matica.design.motion.MaticaMotion
+import mx.matica.design.tokens.MaticaLayout
+import mx.matica.design.tokens.MaticaShapes
 import mx.matica.design.tokens.MaticaSpacing
 import mx.matica.learning.diagnosis.DiagnosisSession
 import mx.matica.learning.mastery.MasteryLevel
@@ -22,6 +47,7 @@ import mx.matica.presentation.components.MaticaChipPalette
 import mx.matica.presentation.components.MaticaCountChip
 import mx.matica.presentation.components.MaticaGlyph
 import mx.matica.presentation.components.MaticaIcon
+import mx.matica.presentation.components.MaticaIconButton
 import mx.matica.presentation.components.MaticaSection
 import mx.matica.presentation.math.RouteMapView
 import mx.matica.presentation.route.MaticaNavigator
@@ -180,42 +206,181 @@ fun DiagnosisResultScreen(session: MaticaSession, navigator: MaticaNavigator) {
     }
 }
 
+/**
+ * Entrada con cuenta. El backend de cuentas está bloqueado, así que la pantalla no finge un formulario
+ * que funciona: lo enseña apagado, explica por qué y deja el camino que sí existe —el perfil local—
+ * como acción principal. La marca y el estado van arriba para que la pantalla se lea como «Mática» y
+ * no como el hueco de una función que falta.
+ */
 @Composable
 fun LoginScreen(session: MaticaSession, navigator: MaticaNavigator) {
-    var email = remember { "" }
-    MaticaScreen(title = "Entrar", session = session, onBack = { navigator.goBack() }, subtitle = "Cuentas y sincronización") {
-        // El estado va suelto y la tarjeta al lado: el `content` de `MaticaStateView` sólo se invoca
-        // en Success, así que mientras estaba anidado dentro de Offline el campo desactivado y su
-        // leyenda no se componían nunca (lo cazó la instrumentación: «Correo de la escuela» no
-        // aparecía en pantalla).
-        MaticaStateView(
-            state = MaticaViewState.Offline(
-                title = "El servicio de cuentas todavía no existe",
-                detail = "El backend está bloqueado: no hay servidor, así que no se puede crear cuenta, " +
-                    "recuperar contraseña ni sincronizar progreso.",
-            ),
-            onRetry = null,
-        ) { }
-        MaticaCard {
-            MaticaField(
-                value = email,
-                onValueChange = { email = it },
-                label = "Correo de la escuela",
-                placeholder = "nombre@escuela.mx",
-                enabled = false,
-                error = "Desactivado hasta que exista el servicio.",
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    val motion = LocalMotionStyle.current
+    // La marca entra dibujándose una sola vez por visita. Con movimiento reducido nace completa: no
+    // hay versión «quieta» que esconda el nombre de la app.
+    val heroDraw = remember { Animatable(if (motion.reduced) 1f else 0f) }
+    LaunchedEffect(motion) {
+        if (!motion.reduced) {
+            heroDraw.animateTo(1f, tween(motion.ms(MaticaMotion.durations.xLong), easing = FastOutSlowInEasing))
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = MaticaSpacing.md, vertical = MaticaSpacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            MaticaIconButton(icon = MaticaIcon.BACK, contentDescription = "Regresa", onClick = { navigator.goBack() })
+            Spacer(modifier = Modifier.weight(1f))
+            LoginStatusPill()
+        }
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .align(Alignment.CenterHorizontally)
+                .widthIn(max = MaticaLayout.maxContentWidth)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = MaticaSpacing.lg, vertical = MaticaSpacing.md),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(MaticaSpacing.lg),
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(MaticaSpacing.sm),
+            ) {
+                MaticaMark(modifier = Modifier.size(72.dp), drawn = heroDraw.value)
+                Text(
+                    text = "Entra a tu cuenta",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.semantics { heading() },
+                )
+                Text(
+                    text = "Tu ruta, tus repasos y tus logros, en un solo perfil.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+            }
+
+            MaticaCard {
+                Text("Cuenta de la escuela", style = MaterialTheme.typography.titleMedium)
+                MaticaCaption(
+                    "El servicio de cuentas todavía no está construido. El formulario no se puede " +
+                        "enviar: está aquí para que sepas qué pedirá cuando exista.",
+                )
+                MaticaField(
+                    value = email,
+                    onValueChange = { email = it },
+                    label = "Correo de la escuela",
+                    placeholder = "nombre@escuela.mx",
+                    keyboard = KeyboardType.Email,
+                    enabled = false,
+                    hint = "Desactivado hasta que exista el servicio.",
+                )
+                MaticaField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = "Contraseña",
+                    placeholder = "Tu contraseña",
+                    keyboard = KeyboardType.Password,
+                    enabled = false,
+                    hint = "Se habilita junto con el correo, cuando haya servidor.",
+                )
+            }
+
+            MaticaButton(
+                label = "Seguir con perfil local",
+                onClick = { navigator.replace(MaticaRoute.Home) },
+                leadingGlyph = MaticaIcon.HOME,
+                fullWidth = true,
             )
             MaticaCaption(
-                "No se guarda ningún correo en la app y no se pide edad: el perfil local no necesita " +
-                    "identificar a menores para funcionar.",
+                "Sin cuenta también hay ruta, repasos y logros: el perfil vive en este teléfono y " +
+                    "Mática no pide tu edad.",
+            )
+
+            MaticaSection("Cuando exista la cuenta") {
+                MaticaCard {
+                    AccountFeature(
+                        icon = MaticaIcon.REFRESH,
+                        title = "Sincroniza entre dispositivos",
+                        detail = "Tu perfil y tus repasos te siguen a otro teléfono.",
+                    )
+                    AccountFeature(
+                        icon = MaticaIcon.LOCK,
+                        title = "Recupera tu avance",
+                        detail = "Si pierdes el dispositivo, la cuenta devuelve tu ruta.",
+                    )
+                    AccountFeature(
+                        icon = MaticaIcon.FORWARD,
+                        title = "Aula del docente",
+                        detail = "Un código de grupo, sin datos personales de más.",
+                    )
+                }
+            }
+            MaticaCaption(
+                "Mática no muestra anuncios ni vende datos. El correo sólo servirá para entrar; hoy " +
+                    "no se guarda ninguno en la app.",
             )
         }
-        MaticaButton(
-            label = "Seguir con perfil local",
-            onClick = { navigator.replace(MaticaRoute.Home) },
-            leadingGlyph = MaticaIcon.HOME,
-            fullWidth = true,
+    }
+}
+
+@Composable
+private fun LoginStatusPill() {
+    val scheme = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .background(scheme.secondaryContainer, MaticaShapes.pill)
+            .padding(horizontal = MaticaSpacing.md, vertical = MaticaSpacing.xs),
+        horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        MaticaGlyph(
+            icon = MaticaIcon.LOCK,
+            tint = scheme.onSecondaryContainer,
+            modifier = Modifier.size(16.dp),
+            strokeWidthDp = 2.2f,
         )
+        Text(
+            text = "Cuentas en preparación",
+            style = MaterialTheme.typography.labelMedium,
+            color = scheme.onSecondaryContainer,
+        )
+    }
+}
+
+@Composable
+private fun AccountFeature(icon: MaticaIcon, title: String, detail: String) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.md),
+        verticalAlignment = Alignment.Top,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(MaticaShapes.pill)
+                .background(MaterialTheme.colorScheme.primaryContainer),
+            contentAlignment = Alignment.Center,
+        ) {
+            MaticaGlyph(
+                icon = icon,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp),
+                strokeWidthDp = 2.2f,
+            )
+        }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(MaticaSpacing.xs)) {
+            Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+            MaticaCaption(detail)
+        }
     }
 }
 
@@ -628,7 +793,7 @@ fun ClassroomScreen(session: MaticaSession, navigator: MaticaNavigator) {
                 label = "Código de invitación",
                 placeholder = "6 caracteres",
                 enabled = false,
-                error = "Desactivado: no hay servidor que lo valide.",
+                hint = "Desactivado: no hay servidor que lo valide.",
             )
             MaticaCaption(
                 "Cuando exista el servicio, el aula traerá: lista del grupo, asignaciones y vista " +

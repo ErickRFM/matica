@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Sólo el fondo de la ventana y el acento del sistema. La paleta de la app vive en
+         `MaticaPalette`; estos dos valores son el mismo color crudo, porque el tema del sistema
+         se pinta antes de que exista un `Composable` que pueda leerlo. -->
+    <color name="matica_background">#F5F8FF</color>
+    <color name="matica_primary">#426BEB</color>
+</resources>

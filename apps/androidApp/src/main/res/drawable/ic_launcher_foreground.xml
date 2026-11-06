@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- La «M» de `MaticaMark` dentro de la zona segura (círculo de 66 dp): el mismo trazo que el
+         splash, sin binarios ni fuente de iconos. El punto de llegada es la lima de la marca. -->
+    <path
+        android:pathData="M34,70 L45,36 L54,58 L63,36 L74,70"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="7.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="@android:color/transparent" />
+    <path
+        android:pathData="M74,70 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0"
+        android:fillColor="#FFB7EF59" />
+</vector>

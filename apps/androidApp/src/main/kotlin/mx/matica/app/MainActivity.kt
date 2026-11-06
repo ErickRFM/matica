@@ -10,7 +10,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import mx.matica.presentation.app.MaticaApp
+import mx.matica.presentation.app.MaticaLaunch
 import mx.matica.presentation.app.MaticaSession
 import mx.matica.presentation.app.rememberMaticaNavigator
 
@@ -21,6 +21,9 @@ class MainActivity : ComponentActivity() {
         // Con `targetSdk = 36` Android 15 ya impone edge-to-edge; llamarlo aquí hace explícito el estado
         // y deja los insets de la ventana en manos del host (`MaticaApp`), que es donde se aplican.
         enableEdgeToEdge()
+        // El splash de marca sólo tiene sentido en un arranque frío: en una rotación la app ya estaba
+        // viva y volver a mostrar un segundo de marca sería un peaje, no una bienvenida.
+        val coldStart = savedInstanceState == null
         setContent {
             val session = remember { MaticaSession() }
             val navigator = rememberMaticaNavigator()
@@ -30,7 +33,7 @@ class MainActivity : ComponentActivity() {
             // Registrado después que el de la pila, así que es el primero que consulta el dispatcher:
             // mientras el teclado asoma, el atrás sólo lo guarda y la pantalla debajo no se mueve.
             BackHandler(enabled = WindowInsets.isImeVisible) { teclado?.hide() }
-            MaticaApp(session = session, navigator = navigator)
+            MaticaLaunch(session = session, navigator = navigator, startWithSplash = coldStart)
         }
     }
 }
