@@ -22,15 +22,15 @@ adb -s emulator-5554 shell wm density   # 440
 Los conteos se leen de los XML, no del código de salida.
 
 **Instrumentados** — `apps/androidApp/build/outputs/androidTest-results/connected/debug/TEST-*.xml`:
-39 casos, 0 fallos, 0 errores (27 → 35 en la primera tanda del día, por las 4 de métricas de layout y
-las 3 de insets; 35 → 39 con la segunda tanda documentada más abajo: +3 en `MaticaAppUiTest` y +1 en
-`MaticaLayoutMetricsTest`).
+41 casos, 0 fallos, 0 errores (27 → 35 en la primera tanda del día, por las 4 de métricas de layout y
+las 3 de insets; 35 → 39 con la caminata visual: +3 en `MaticaAppUiTest` y +1 en
+`MaticaLayoutMetricsTest`; 39 → 41 con las dos aserciones que cerraron el hueco documentado abajo).
 
 | Clase | Casos | Qué mide en el dispositivo |
 |---|---|---|
 | `MaticaWindowInsetsTest` | 3 | el título nace debajo de la barra de estado y la última acción no cae bajo la barra de navegación; tocar un hueco real del scrim cierra la hoja **sin remontar** el reproductor (prueba: «Falta la línea» sigue ahí); el atrás con el teclado abierto cierra el teclado y conserva la pantalla |
 | `MaticaLayoutMetricsTest` | 5 | flechas y botones ≥ 48 dp leídos en píxeles; cuerpo topado a 640 dp y centrado en una ventana ancha real; 8 dp entre el título de apartado y lo que titula contra 16 dp entre apartados; la barra expone `ProgressBarRangeInfo(0.2, 0..1, steps=14)`; las cuatro etiquetas de movimiento caben en una línea (≤ 56 dp de alto cada una) |
-| `MaticaAppUiTest` | 9 | host, rutas, tema pintado y — nuevo — los dos formularios desactivados de los servicios bloqueados se muestran; la hoja de pistas pinta una superficie opaca sobre el reproductor; las opciones del diagnóstico se recortan sobre la tarjeta; «Mi perfil» se abre desde Hoy |
+| `MaticaAppUiTest` | 11 | host, rutas, tema pintado y — nuevo — los dos formularios desactivados de los servicios bloqueados se muestran; la hoja de pistas pinta una superficie opaca sobre el reproductor; las opciones del diagnóstico se recortan sobre la tarjeta; «Mi perfil» se abre desde Hoy; la opción de grado sin elegir tiene superficie propia y Logros no repite sus insignias |
 | `MaticaMathComponentsTest` | 6 | los cuatro componentes matemáticos desde el `ExerciseRenderPlan` |
 | `MaticaStateViewsTest` | 5 | carga/vacío/error/offline/éxito |
 | `MaticaMotionTest` | 3 | escala 0 llega al compositor con fundido topado a 150 ms |
@@ -113,9 +113,9 @@ pantalla de Hoy de la tanda anterior (`16-hoy-accesos.png`, 2:53) seguía mostra
 |---|---|---|---|
 | 1 | La ruta modal se dibujaba **transparente** encima de la pantalla que la abrió: la cabecera «Pistas» caía en la misma coordenada que el título del ejercicio («Operaciones con enteros · ejercicio 1» se leía debajo de «Pistas») y el reproductor se filtraba a través de los huecos de las tarjetas | antes `10-hoja-pistas.png` | `MaticaApp.kt`: la capa del scrim pasa a hoja anclada abajo (`SHEET_HEIGHT = 0.78f`), con `Surface` opaca y radio superior del sistema; la franja de arriba sigue siendo scrim tocable. Después: `11-hoja-opaca.png` y cierre por scrim en `12-scrim-cerrado.png` |
 | 2 | `MaticaButton` aceptaba el `modifier` del llamador y **no lo aplicaba**: la fila construía su propio ancho, así que el `weight(1f)` de las filas de opciones se perdía y la última etiqueta, «Rápida», se escribía una letra por renglón en los 392,72 dp del teléfono | antes `03-ajustes.png` (fila de Movimiento: Ninguna / Lenta / Normal / R-á-p-i-d-a) | `MaticaButton.kt`: el `modifier` del llamador va primero en la cadena, antes del ancho y del `heightIn`. Después: `04-ajustes-despues.png` (ya en dos filas de dos, etiquetas enteras) |
-| 3 | Las tres opciones de grado usaban `TEXT`: sin superficie, «1.º de secundaria» y «3.º de secundaria» se leían como etiquetas sueltas y sólo la elegida parecía un botón | antes `04-ajustes-despues.png` | `MaticaNavigationScreens.kt`: grado en `NEUTRAL`, una opción por línea y a ancho completo. No van en fila de tres: «2.º de secundaria» necesita ~150 dp de etiqueta y el teléfono deja ~116 dp por celda. Después: `05-ajustes-grado.png` |
+| 3 | Las tres opciones de grado usaban `TEXT`: sin superficie, «1.º de secundaria» y «3.º de secundaria» se leían como etiquetas sueltas y sólo la elegida parecía un botón | antes `04-ajustes-despues.png` | `MaticaNavigationScreens.kt`: grado en `NEUTRAL`, una opción por línea y a ancho completo. No van en fila de tres: «2.º de secundaria» necesita ~150 dp de etiqueta y el teléfono deja ~116 dp por celda. Después: `05-ajustes-grado.png`. Fijado después por `laOpcionDeGradoNoElegidaTieneSuperficiePropia` |
 | 4 | La frase de estrategia del ejercicio usaba `titleMedium`: dos líneas de texto corrido compuestas con peso de titular, por encima de la propia ecuación | leído en pantalla durante la caminata; **no quedó captura del antes** (el fix se aplicó en la misma pasada) | `MaticaLessonScreens.kt`: `bodyLarge`. Después: `19-practica-tipografia.png` |
-| 5 | Logros pintaba su propia fila de tres insignias y **duplicaba** «0 XP» y «0 días» a 40 px de la barra de arriba | antes `14-logros.png` | `showChips = false` en `RewardsScreen` y también en `HintSheetScreen` (allí repetía el mismo par dentro del 78 % de la hoja, quitando sitio a las pistas). Después: `17-logros-sin-duplicado.png` |
+| 5 | Logros pintaba su propia fila de tres insignias y **duplicaba** «0 XP» y «0 días» a 40 px de la barra de arriba | antes `14-logros.png` | `showChips = false` en `RewardsScreen` y también en `HintSheetScreen` (allí repetía el mismo par dentro del 78 % de la hoja, quitando sitio a las pistas). Después: `17-logros-sin-duplicado.png`, fijado por `logrosNoRepiteLasInsigniasDeLaCabecera` |
 | 6 | `MaticaRoute.Profile` **no tenía entrada ninguna**: la pantalla existía y se probaba montando la ruta a mano, pero ningún botón llevaba a ella, así que el reinicio del perfil local era inalcanzable para el estudiante | inventario de rutas + ausencia de acceso en las capturas de Hoy | Apartado «Accesos» de Hoy pasa a dos filas de dos e incluye «Mi perfil» (en tres por fila la etiqueta no cabía: ~114 dp por celda contra ~118 del texto); el camino del estudiante se recorre en el test `desdeHoySePuedeAbrirElPerfilLocal`. Después: `16-hoy-accesos.png`, `18-perfil.png` y `23-hoy-perfil-nuevo.png` |
 | 7 | Las opciones del diagnóstico y «Abrir habilidad» usaban `NEUTRAL` **dentro de una `MaticaCard`**: el relleno del neutro en claro es `BlueMist` y la tarjeta se pinta con `surfaceVariant`, que en claro también es `BlueMist`, así que el botón desaparecía sobre su propia tarjeta | antes `20-diagnostico.png` (cuatro respuestas como texto suelto) y `16-hoy-accesos.png` («Abrir habilidad» sin recortar) | Variante `OUTLINE` dentro de tarjeta (es la variante pensada para ese fondo: «borde sobre tarjeta»); «Abrir habilidad» además en `fullWidth`. Después: `21-diagnostico-bordes.png` y `23-hoy-perfil-nuevo.png` |
 
@@ -137,8 +137,8 @@ orden de lectura):
 
 ### Las pruebas nuevas tienen dientes (experimento de inversión)
 
-Una aserción que pasa con el defecto puesto no prueba nada. Se hicieron dos inversiones temporales del
-código de producción, cada una con su corrida:
+Una aserción que pasa con el defecto puesto no prueba nada. Se hicieron cuatro inversiones temporales
+del código de producción, cada una con su corrida:
 
 1. Se restauró la capa modal transparente (copia de seguridad `MaticaApp.kt` previa al fix) y se corrió
    la clase: salió rojo con el mensaje medido — «El título «Pistas» arranca en y=185.0 dentro de una
@@ -148,20 +148,54 @@ código de producción, cada una con su corrida:
    `OUTLINE`, verde otra vez.
 
 Después de ambas reposiciones se volvió a ejecutar la batería completa: 39 instrumentados y 757
-unitarios, 0 fallos (los números de arriba se leyeron de esa corrida).
+unitarios, 0 fallos.
+
+### Cerrando el hueco: grado e insignias duplicadas pasan a medirse
+
+Quedaban tres fixes sostenidos sólo por su captura. Dos se convirtieron en aserción el mismo día; el
+terno se explica abajo y sigue sin prueba.
+
+- `MaticaAppUiTest.laOpcionDeGradoNoElegidaTieneSuperficiePropia`: toma la opción de grado que **no**
+  está elegida (se lee de `session.settings.grade`, no se escribe a mano), pide el nodo clicable y
+  compara el píxel 12 px dentro del borde izquierdo contra el de 8 px fuera. Se mide el relleno y no
+  el centro porque en el centro siempre hay tinta de la letra: con `TEXT` la prueba habría pasado por
+  los pelos midiendo el glifo.
+- `MaticaAppUiTest.logrosNoRepiteLasInsigniasDeLaCabecera`: exige que `"${session.xp} XP"` y
+  `"${session.streak} días"` aparezcan **una sola vez** en el árbol. Con `hasText(..., substring)`
+  fallaría por otro motivo — el apartado de marcas también lleva «XP» en cada línea («Primer bloque de
+  práctica · 60 XP») — así que la matcher es el texto exacto del contador.
+
+Ambas se corrieron primero con el fix puesto (11/0) y luego con los dos defectos reuestos a la vez
+(`TEXT` en grado y `showChips` quitado de `RewardsScreen`), y el XML devolvió `tests="11"
+failures="2"` con los dos mensajes leídos del dispositivo:
+
+```
+«0 XP» aparece 2 veces en Logros: la pantalla pinta su propia fila de insignias encima de la de
+la cabecera y el estudiante ve el mismo contador dos veces a 40 px.
+
+«1.º de secundaria» vale #fff5f8ff por dentro y #fff5f8ff ocho px a su izquierda: la opción sin
+elegir no tiene superficie, se lee como una etiqueta más del apartado y no como algo que se
+puede tocar.
+```
+
+El segundo mensaje es el que deja el defecto retratado en un número: `#F5F8FF` es `Mist`, el fondo de
+pantalla, así que el botón pintaba exactamente el color de lo que había detrás.
+
+Tras reponer los dos fixes, batería completa otra vez: **41 instrumentados y 757 unitarios, 0 fallos**
+(`BUILD SUCCESSFUL in 1m 53s`, `tests="41" failures="0" errors="0"`).
 
 ## Pendiente y bloqueado (no fingido como hecho)
 
-- **Tres de los siete fixes de la caminata no tienen aserción propia**: la variante de las opciones de
-  grado (3), el peso del párrafo de estrategia (4) y los chips duplicados de Logros (5) están
-  sostenidos sólo por su captura antes/después. No hay ningún test que busque «Grado», «Logros» o
-  `showChips` en el árbol instrumentado; se verificó con `grep` sobre
-  `apps/androidApp/src/androidTest`. Si alguien vuelve a poner `TEXT` en grado o reactiva los chips,
-  nada lo va a pintar rojo.
+- **Uno de los siete fixes de la caminata sigue sin aserción**: el peso del párrafo de estrategia (4).
+  Grado (3) e insignias duplicadas (5) se midieron en el dispositivo en la misma tarde, así que ya no
+  dependen de la captura. Lo del párrafo no se convirtió en prueba porque la API de semántica de
+  Compose no expone el `TextStyle` aplicado: el nodo dice qué texto hay, no con qué tipografía se pintó.
+  Medirlo obligaría a inferir la cuerpo por altura de tinta en la captura, y una aserción así se cae
+  con cualquier cambio de escala de fuente. Queda sostenida por `19-practica-tipografia.png` y por la
+  convención escrita en `docs/ARCHITECTURE.md`.
 - **Las 23 capturas no viven en el repositorio**: quedaron en
   `C:/Users/erik5/AppData/Local/Temp/matica-shots/` (borrador de la sesión), igual que las de Figma.
   Son evidencia de una fecha, no un archivo controlado por Git.
-
 - **Tableta real y doble columna**: el tope de 640 dp y su centrado están medidos en un viewport
   horizontal de emulador; no hay dispositivo físico, así que el comportamiento con dos columnas
   reales sigue sin evidencia.
