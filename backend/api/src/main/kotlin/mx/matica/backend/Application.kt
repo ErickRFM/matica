@@ -25,7 +25,7 @@ data class TopicCatalog(val version: Int, val topics: List<TopicItem>)
 /** Punto de entrada de Render. Nunca requiere una clave para arrancar. */
 fun main() {
     val port = System.getenv("PORT")?.toIntOrNull()?.takeIf { it in 1..65535 } ?: 10000
-    embeddedServer(Netty, port = port, host = "0.0.0.0", module = Application::maticaModule).start(wait = true)
+    embeddedServer(Netty, port = port, host = "0.0.0.0", module = { maticaModule() }).start(wait = true)
 }
 
 /**
