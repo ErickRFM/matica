@@ -28,6 +28,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import mx.matica.design.motion.LocalMotionStyle
 import mx.matica.design.motion.MaticaMotion
+import mx.matica.design.tokens.MaticaLayout
 import mx.matica.design.tokens.MaticaSpacing
 import mx.matica.math.numeric.Rational
 import mx.matica.presentation.components.MaticaIcon
@@ -85,6 +86,13 @@ fun quarterTick(model: NumberLineModel): Rational =
     nearestTick(model.from + (model.to - model.from) / Rational.of(4, 1), model.orderedTicks)
 
 /**
+ * Posición objetivo del marcador: depende sólo del valor seleccionado y del intervalo dibujado, nunca
+ * de la instancia del modelo ni de cuántas marcas o puntos tenga. `null` si no hay nada marcado.
+ */
+internal fun markerPositionOf(selected: Rational?, model: NumberLineModel): Float? =
+    selected?.let { positionOf(it, model.from, model.to) }
+
+/**
  * Recta numérica interactiva. Arrastrar y los botones de salto llegan al mismo `Rational` exacto:
  * el gesto existe para que se pueda explorar la recta, no como única vía, de modo que un lector de
  * pantalla o un teclado siguen pudiendo cambiar el valor (WCAG 2.1.1).
@@ -97,10 +105,13 @@ fun NumberLineView(
     onValueChange: (Rational) -> Unit = {},
 ) {
     val motion = LocalMotionStyle.current
-    val marker = remember { Animatable(selected?.let { positionOf(it, model.from, model.to) } ?: 0f) }
-    LaunchedEffect(selected, model, motion.reduced) {
-        val target = selected?.let { positionOf(it, model.from, model.to) } ?: return@LaunchedEffect
-        if (motion.reduced) marker.snapTo(target) else marker.animateTo(target, MaticaMotion.popSpec(motion))
+    // La clave del viaje es la posición objetivo, no el modelo: la recta puede ganar marcas o puntos
+    // sin que cambie dónde debe caer el marcador, y con el modelo de clave el movimiento se reiniciaba.
+    val target = markerPositionOf(selected, model)
+    val marker = remember { Animatable(target ?: 0f) }
+    LaunchedEffect(target, motion.reduced) {
+        val position = target ?: return@LaunchedEffect
+        if (motion.reduced) marker.snapTo(position) else marker.animateTo(position, MaticaMotion.popSpec(motion))
     }
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
@@ -167,6 +178,8 @@ fun NumberLineView(
                 }
             }
         }
+        // Las dos flechas se piden con el token de objetivo táctil (48 dp de Material) en lugar del
+        // literal 44 dp: si `MaticaIconButton` recorta su caja interna a 44, ahí se corrige, no aquí.
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.sm, Alignment.CenterHorizontally),
@@ -176,7 +189,7 @@ fun NumberLineView(
                 icon = MaticaIcon.BACK,
                 contentDescription = "Marca anterior",
                 onClick = { stepTick(model, selected, -1, onValueChange) },
-                modifier = Modifier.size(44.dp),
+                modifier = Modifier.size(MaticaLayout.touchTarget),
             )
             Text(
                 text = selected?.toString() ?: "Sin marcador",
@@ -189,7 +202,7 @@ fun NumberLineView(
                 icon = MaticaIcon.FORWARD,
                 contentDescription = "Marca siguiente",
                 onClick = { stepTick(model, selected, +1, onValueChange) },
-                modifier = Modifier.size(44.dp),
+                modifier = Modifier.size(MaticaLayout.touchTarget),
             )
         }
     }

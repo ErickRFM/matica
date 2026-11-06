@@ -66,4 +66,42 @@ class MotionStyleTest {
         assertEquals(150, MaticaMotion.fadeSpec(MotionStyle(0f), baseMs = 160).durationMillis)
         assertEquals(80, MaticaMotion.fadeSpec(MotionStyle(0.5f), baseMs = 160).durationMillis)
     }
+
+    @Test
+    fun laRigidezDelContenidoCreceConLaEscalaDelSistema() {
+        val slow = MaticaMotion.contentSpec<Float>(MotionStyle(0.5f)).stiffness
+        val normal = MaticaMotion.contentSpec<Float>(MotionStyle(1f)).stiffness
+        val fast = MaticaMotion.contentSpec<Float>(MotionStyle(1.5f)).stiffness
+        assertTrue(slow < normal && normal < fast, "rigidez creciente 0.5x<$slow 1x<$normal 1.5x<$fast")
+    }
+
+    @Test
+    fun laRigidezDelReboteCreceConLaEscalaDelSistema() {
+        val slow = MaticaMotion.popSpec<Float>(MotionStyle(0.5f)).stiffness
+        val normal = MaticaMotion.popSpec<Float>(MotionStyle(1f)).stiffness
+        val fast = MaticaMotion.popSpec<Float>(MotionStyle(1.5f)).stiffness
+        assertTrue(slow < normal && normal < fast, "rigidez creciente 0.5x<$slow 1x<$normal 1.5x<$fast")
+    }
+
+    @Test
+    fun conMovimientoReducidoLaRigidezNoDesaparecePeroElReboteSi() {
+        val calm = MotionStyle(0f)
+        assertEquals(1f, MaticaMotion.contentSpec<Float>(calm).dampingRatio)
+        assertEquals(1f, MaticaMotion.popSpec<Float>(calm).dampingRatio)
+        assertEquals(1f, MaticaMotion.stiffnessFactor(calm.scale))
+    }
+
+    @Test
+    fun elFactorDeRigidezQuedaDentroDelCoercitivo() {
+        assertEquals(MaticaMotion.STIFFNESS_FACTOR_MIN, MaticaMotion.stiffnessFactor(0.05f))
+        assertEquals(MaticaMotion.STIFFNESS_FACTOR_MAX, MaticaMotion.stiffnessFactor(20f))
+        val extreme = MotionStyle(20f)
+        assertTrue(MaticaMotion.contentSpec<Float>(extreme).stiffness > 0f)
+        assertTrue(MaticaMotion.popSpec<Float>(MotionStyle(0.05f)).stiffness > 0f)
+        assertTrue(
+            MaticaMotion.popSpec<Float>(extreme).stiffness <=
+                MaticaMotion.popSpec<Float>(MotionStyle(1f)).stiffness * MaticaMotion.STIFFNESS_FACTOR_MAX,
+            "ninguna escala extrema deja el muelle fuera del coercitivo",
+        )
+    }
 }

@@ -107,7 +107,9 @@ fun FractionView(
     val model = remember(value, asMixed) { fractionModel(value, asMixed) }
     val motion = LocalMotionStyle.current
     val sweep = remember { Animatable(if (motion.reduced) 1f else 0f) }
-    LaunchedEffect(value, motion.reduced) {
+    // La barra se barre cuando cambia lo que se dibuja (el modelo, clave estructural), no en cada
+    // recomposición: otra instancia del mismo `Rational` no debe reiniciar el trazo.
+    LaunchedEffect(model, motion.reduced) {
         if (motion.reduced) sweep.snapTo(1f) else sweep.animateTo(1f, MaticaMotion.popSpec(motion))
     }
     Row(
@@ -120,7 +122,7 @@ fun FractionView(
         if (model.isFraction) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 FractionText(model.numeratorText!!, color)
-                FractionBar(sweep.value, color)
+                FractionBar(fractionBarExtent(sweep.value), color)
                 FractionText(model.denominatorText!!, color)
             }
         } else {
@@ -128,6 +130,13 @@ fun FractionView(
         }
     }
 }
+
+/**
+ * Tramo de la barra que se pinta. El rebote del `popSpec` puede pasar de 1: la barra no puede
+ * ensancharse más que el numerador que separa, así que el valor se recorta al rango dibujable.
+ */
+internal fun fractionBarExtent(sweep: Float): Float = sweep.coerceIn(0f, 1f)
+
 @Composable
 private fun FractionText(text: String, color: Color) {
     Text(
@@ -140,6 +149,8 @@ private fun FractionText(text: String, color: Color) {
 
 @Composable
 private fun FractionBar(fraction: Float, color: Color) {
+    // 3 dp es el grueso del trazo de la barra (medida de dibujo, calibrada contra el alto del
+    // glifo tipográfico), no un espaciado entre elementos: no debe migrar a `MaticaSpacing`.
     Canvas(modifier = Modifier.fillMaxWidth().height(3.dp)) {
         val barWidth = size.width * fraction
         drawRoundRect(
@@ -197,6 +208,8 @@ fun FractionStrip(
     }
     val target = cells.filledParts.toFloat()
     val progress = remember { Animatable(if (motion.reduced) target else 0f) }
+    // La clave es el número de partes pintadas (valor derivado del modelo), no la instancia de
+    // `value`: la barra avanza cuando cambia el reparto, no cuando la pantalla se recompone.
     LaunchedEffect(target, motion.reduced) {
         if (motion.reduced) progress.snapTo(target) else progress.animateTo(target, MaticaMotion.popSpec(motion))
     }

@@ -11,7 +11,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -19,8 +22,10 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathMeasure
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import mx.matica.design.motion.LocalMotionStyle
 import mx.matica.design.motion.MaticaMotion
@@ -103,6 +108,57 @@ fun plotSeries(
 }
 
 /**
+ * Clave del revelado: tamaño e identidad de lo trazado (cuántos trazos, cuántos puntos, cuántos
+ * cortes y dónde empiezan/terminan), no la serie entera. `seriesOf` se recalcula fuera de la pantalla
+ * en cada recomposición y usar la lista de clave reiniciaba la curva desde cero.
+ */
+data class PlotRevealKey(
+    val segments: Int,
+    val points: Int,
+    val breaks: Int,
+    val firstX: Float,
+    val lastX: Float,
+    val lastY: Float,
+)
+
+fun plotRevealKey(series: PlotSeries): PlotRevealKey {
+    val first = series.segments.firstOrNull()?.firstOrNull()
+    val last = series.segments.lastOrNull()?.lastOrNull()
+    return PlotRevealKey(
+        segments = series.segments.size,
+        points = series.segments.sumOf { it.size },
+        breaks = series.gaps + series.outOfRange,
+        firstX = first?.xFraction ?: 0f,
+        lastX = last?.xFraction ?: 0f,
+        lastY = last?.yFraction ?: 0f,
+    )
+}
+
+/**
+ * Tramos visibles de la serie, ya en píxeles del canvas. La medición ocurre fuera de la fase de
+ * dibujo porque `PathMeasure.setPath` muta lo que mide y Compose puede volver a ejecutar `draw`
+ * cuando quiera. Con `progress` en 1 devuelve la curva completa.
+ */
+internal fun plotVisibleSegments(series: PlotSeries, sizePx: IntSize, progress: Float): List<Path> {
+    if (sizePx.width <= 0 || sizePx.height <= 0 || progress <= 0f) return emptyList()
+    val measured = PathMeasure()
+    return series.segments.mapNotNull { segment ->
+        if (segment.size < 2) return@mapNotNull null
+        val path = Path()
+        segment.forEachIndexed { index, point ->
+            val x = sizePx.width * point.xFraction
+            val y = sizePx.height * point.yFraction
+            if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        }
+        measured.setPath(path, false)
+        val visible = Path()
+        // El trazo progresivo se saca de la longitud real del camino: un `phase` fingido dejaría la
+        // curva punteada en lugar de dibujarse de izquierda a derecha.
+        if (measured.getSegment(0f, measured.length * progress.coerceIn(0f, 1f), visible, true)) visible else null
+    }
+}
+
+/**
  * Plano cartesiano con el trazo progresivo: la curva se dibuja sola de izquierda a derecha, que es
  * el orden en que se lee una función. Con movimiento reducido aparece completa.
  */
@@ -118,16 +174,22 @@ fun CartesianGraphView(
 ) {
     val motion = LocalMotionStyle.current
     val draw = remember { Animatable(if (motion.reduced) 1f else 0f) }
-    LaunchedEffect(series, motion.reduced) {
+    val shape = plotRevealKey(series)
+    LaunchedEffect(shape, motion.reduced) {
         if (motion.reduced) draw.snapTo(1f) else draw.animateTo(1f, MaticaMotion.contentSpec(motion))
     }
     val lineColor = MaterialTheme.colorScheme.primary
     val gridColor = MaterialTheme.colorScheme.outlineVariant
     val markerColor = MaterialTheme.colorScheme.tertiary
-    val measured = remember { PathMeasure() }
+    var canvasSize by remember { mutableStateOf(IntSize.Zero) }
+    val tracedSegments = remember(series, canvasSize, draw.value) {
+        plotVisibleSegments(series, canvasSize, draw.value)
+    }
     Box(
         modifier = modifier
             .fillMaxWidth()
+            // 220 dp son la caja que ocupan los ejes y las curvas (medida de dibujo, con su escala
+            // propia); no es espaciado entre elementos, así que no debe convertirse en un token.
             .height(220.dp)
             .semantics {
                 contentDescription =
@@ -135,30 +197,14 @@ fun CartesianGraphView(
                         "trazos continuos y ${series.gaps + series.outOfRange} cortes."
             },
     ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
+        Canvas(modifier = Modifier.fillMaxSize().onSizeChanged { canvasSize = it }) {
             val horizontal = size.height / 2f
             val vertical = size.width / 2f
             drawLine(gridColor, Offset(0f, horizontal), Offset(size.width, horizontal), 2.dp.toPx())
             drawLine(gridColor, Offset(vertical, 0f), Offset(vertical, size.height), 2.dp.toPx())
-            series.segments.forEach { segment ->
-                if (segment.size < 2) return@forEach
-                val path = Path()
-                segment.forEachIndexed { index, point ->
-                    val x = size.width * point.xFraction
-                    val y = size.height * point.yFraction
-                    if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
-                }
-                // El trazo progresivo se saca de la longitud real del camino: un `phase` fingido
-                // dejaría la curva punteada en lugar de dibujarse de izquierda a derecha.
-                measured.setPath(path, false)
-                val visible = Path()
-                if (measured.getSegment(0f, measured.length * draw.value, visible, true)) {
-                    drawPath(
-                        path = visible,
-                        color = lineColor,
-                        style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round),
-                    )
-                }
+            tracedSegments.forEach { segment ->
+                // 3 dp de grueso: medida del trazo, no de layout.
+                drawPath(path = segment, color = lineColor, style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round))
             }
             solutionMarkers.forEach { solution ->
                 val x = size.width * positionOf(solution, xFrom, xTo)

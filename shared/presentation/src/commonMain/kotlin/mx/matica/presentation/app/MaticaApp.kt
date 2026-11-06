@@ -10,14 +10,20 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -82,6 +88,13 @@ private fun MaticaNavHost(session: MaticaSession, navigator: MaticaNavigator, re
     // Un enlace profundo puede traer sólo la hoja (`lesson/X/1/hints`) sin pantalla debajo. Entonces la
     // hoja ya es el `base` y dibujarla además como capa de fondo la pinta dos veces encima de sí misma.
     val baseRoute = if (overlay != null && navigator.base == overlay) null else navigator.base
+    // El fondo oscuro sólo anima su alpha, no su posición: metido dentro del `AnimatedContent` de la
+    // hoja bajaba deslizando con ella, y así el scrim se funde mientras la hoja sube desde el borde.
+    val scrimAlpha by animateFloatAsState(
+        targetValue = if (overlay != null) SCRIM_ALPHA else 0f,
+        animationSpec = tween(if (quiet) 0 else style.fadeMs(MaticaMotion.durations.short)),
+        label = "matica-scrim",
+    )
     // `Surface` y no un `Column` suelto: sin él el fondo que se ve es el de la ventana del sistema,
     // no el token medido del tema, y cambiar de tema en Ajustes no pinta nada (así lo detectó la
     // prueba de instrumentación sobre el píxel).
@@ -90,7 +103,9 @@ private fun MaticaNavHost(session: MaticaSession, navigator: MaticaNavigator, re
         color = MaterialTheme.colorScheme.background,
         contentColor = MaterialTheme.colorScheme.onBackground,
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        // Los insets van en el host y no en cada pantalla: son 18 pantallas y un solo host, así que el
+        // notch, la barra de navegación y el teclado se resuelven una vez y ninguna ruta puede olvidarlos.
+        Box(modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             AnimatedContent(
                 targetState = RouteTarget(baseRoute, navigator.baseDepth),
                 transitionSpec = {
@@ -101,6 +116,18 @@ private fun MaticaNavHost(session: MaticaSession, navigator: MaticaNavigator, re
                 modifier = Modifier.fillMaxSize(),
             ) { target ->
                 target.route?.let { MaticaRouteContent(it, session, navigator) }
+            }
+            // Capa independiente, debajo de la hoja: tocando el negro también se cierra, sin depender
+            // del botón «Regresa». Al cerrarse `enabled` se apaga antes de que termine de fundirse.
+            if (scrimAlpha > 0f) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .background(MaterialTheme.colorScheme.scrim.copy(alpha = scrimAlpha))
+                        .clickable(enabled = overlay != null, onClickLabel = SCRIM_ON_CLICK_LABEL) {
+                            navigator.goBack()
+                        },
+                )
             }
             // La capa modal se dibuja encima de la pantalla que la abrió: cerrarla no vuelve a montar el reproductor.
             AnimatedContent(
@@ -113,11 +140,7 @@ private fun MaticaNavHost(session: MaticaSession, navigator: MaticaNavigator, re
                 modifier = Modifier.fillMaxSize(),
             ) { target ->
                 val route = target.route ?: return@AnimatedContent
-                Box(
-                    modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = SCRIM_ALPHA)),
-                ) {
-                    MaticaRouteContent(route, session, navigator)
-                }
+                MaticaRouteContent(route, session, navigator)
             }
         }
     }
@@ -153,6 +176,9 @@ private fun fadePair(style: MotionStyle): Pair<EnterTransition, ExitTransition> 
 }
 
 private const val SCRIM_ALPHA = 0.45f
+
+/** Lo que dice TalkBack al activar la capa oscura: sin etiqueta, el toque sería un misterio accesible. */
+private const val SCRIM_ON_CLICK_LABEL = "Cerrar las pistas"
 
 /** Desempeño de las 18 rutas. Cada pantalla recibe el navegador para decidir hacia dónde empuja. */
 @Composable
