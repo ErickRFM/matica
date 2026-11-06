@@ -23,6 +23,15 @@ application {
     mainClass.set("mx.matica.backend.ApplicationKt")
 }
 
+// El CI corre con JDK 17, pero cualquier máquina con un JDK más nuevo compila `compileJava` con ése
+// y la validación de consistencia aborta el módulo antes de compilar si Kotlin sigue fijando 17.
+// Anclar Java al mismo destino lo arregla en ambas; la alternativa (toolchain 17) obligaría a tener
+// un JDK 17 instalado aparte.
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
 dependencies {
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.netty)
