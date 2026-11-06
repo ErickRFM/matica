@@ -96,6 +96,41 @@ class FractionLinearTemplate : ExerciseTemplate {
     }
 }
 
+/**
+ * `2(x + b) = P`: el perímetro de un rectángulo de lados `x` y `b`. Es la única plantilla geométrica
+ * del catálogo porque es la única lectura que no añade información falsa: los cuatro lados y el
+ * total salen de la propia ecuación, y el dibujo no tiene que inventarse ninguna medida.
+ */
+class PerimeterRectangleTemplate : ExerciseTemplate {
+    override val id = "rectangle-perimeter"
+    override val labelEs = "Rectángulo: el lado que falta en el perímetro"
+    override val skill = SkillId.ALGEBRAIC_EXPRESSIONS
+    override val variable = "x"
+    override val ranges = listOf(
+        // Lados positivos por construcción: un lado negativo no se puede rotular en la figura.
+        ParameterRange("b", 1, 12),
+        ParameterRange("k", 1, 15),
+    )
+
+    override fun build(params: ParameterSet, seed: Long): GenerationOutcome {
+        val reasons = validateRanges(ranges, params).toMutableList()
+        val b = params.of("b") ?: return rejected(reasons)
+        val k = params.of("k") ?: return rejected(reasons)
+        if (reasons.isNotEmpty()) return GenerationOutcome.Rejected(reasons)
+        if (b <= 0) return GenerationOutcome.Rejected(listOf("'b' = $b no es un lado: la figura no rotula longitudes negativas."))
+        if (k <= 0) return GenerationOutcome.Rejected(listOf("'k' = $k dejaría un lado de cero o menos."))
+
+        val leftSide = Expr.Product(
+            listOf(
+                Expr.Product.Factor(explicit = false, ExerciseAst.const(2L)),
+                Expr.Product.Factor(explicit = false, ExerciseAst.innerSum(b.toLong(), variable)),
+            ),
+        )
+        val equation = Expr.Equals(left = leftSide, right = ExerciseAst.const(2L * (k + b)))
+        return ready(equation, k.toLong(), params, seed)
+    }
+}
+
 /** Currículo de plantillas del MVP: cada una apunta a una habilidad del grafo. */
 object ExerciseTemplates {
     val all: List<ExerciseTemplate> = listOf(
@@ -103,6 +138,7 @@ object ExerciseTemplates {
         TwoStepLinearTemplate(),
         DistributiveLinearTemplate(),
         FractionLinearTemplate(),
+        PerimeterRectangleTemplate(),
     )
 
     fun byId(id: String): ExerciseTemplate? = all.firstOrNull { it.id == id }

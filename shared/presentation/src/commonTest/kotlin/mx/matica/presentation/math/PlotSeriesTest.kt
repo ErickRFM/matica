@@ -73,4 +73,34 @@ class PlotSeriesTest {
     fun unEjeHorizontalQueNoCreceSeRechaza() {
         assertFailsWith<IllegalArgumentException> { samplePlot(reciprocal, whole(1), whole(-1), samples = 5) }
     }
+
+    @Test
+    fun elArrastreDelPuntoSeEnganchaAUnaMarcaExactaDeLaVentana() {
+        val window = -4L..4L
+        val candidates = window.map { whole(it) }
+        assertEquals(whole(-4), trackerXAt(0f, whole(-4), whole(4), candidates))
+        assertEquals(whole(4), trackerXAt(1f, whole(-4), whole(4), candidates))
+        assertEquals(whole(0), trackerXAt(0.5f, whole(-4), whole(4), candidates))
+        assertEquals(whole(-4), trackerXAt(-1f, whole(-4), whole(4), candidates), "El dedo fuera del plano se queda en el borde.")
+        assertEquals(whole(4), trackerXAt(2f, whole(-4), whole(4), candidates))
+        val middle = trackerXAt(0.62f, whole(-4), whole(4), candidates)
+        assertEquals(whole(1), middle, "0,62 de un ancho de 8 unidades cae dentro de la marca 1.")
+        assertEquals(
+            middle,
+            trackerXAt(0.66f, whole(-4), whole(4), candidates),
+            "Cuatro centésimas de ancho —menos de media marca— no sacan el punto de su marca.",
+        )
+        assertNull(trackerXAt(0.5f, whole(-4), whole(4), emptyList()), "Sin marcas no hay punto que colocar.")
+    }
+
+    @Test
+    fun cadaMarcaDevuelveSuPropiaPosicionAlArrastrar() {
+        // El viaje de ida y vuelta es lo que garantiza que el punto dibujado cae sobre la recta:
+        // la fracción de la marca, vuelta a consultar, regresa la misma marca exacta.
+        val candidates = (-4L..4L).map { whole(it) }
+        candidates.forEach { x ->
+            val fraction = positionOf(x, whole(-4), whole(4))
+            assertEquals(x, trackerXAt(fraction, whole(-4), whole(4), candidates), "La marca $x no volvió a sí misma.")
+        }
+    }
 }

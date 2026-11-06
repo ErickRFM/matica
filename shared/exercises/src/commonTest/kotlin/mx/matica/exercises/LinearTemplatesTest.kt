@@ -20,6 +20,7 @@ class LinearTemplatesTest {
     private val twoStep = TwoStepLinearTemplate()
     private val distributive = DistributiveLinearTemplate()
     private val fraction = FractionLinearTemplate()
+    private val perimetro = PerimeterRectangleTemplate()
 
     private fun params(vararg pairs: Pair<String, Int>): ParameterSet = ParameterSet(pairs.toMap())
 
@@ -102,13 +103,32 @@ class LinearTemplatesTest {
     }
 
     @Test
+    fun elPerimetroDelRectanguloSeEscribeComoLoEscribiriaUnLibro() {
+        val instance = ready(perimetro, params("b" to 3, "k" to 4))
+        assertEquals("2(x + 3) = 14", instance.equationText)
+        assertEquals(Rational.fromLong(4), instance.solution)
+        assertEquals(Rational.fromLong(4), resuelta(instance), "El lado que falta es el que resuelve el motor.")
+        assertTrue(engine.restrictions(instance.equationText).isEmpty(), "Un perímetro no nace con dominio proibido.")
+    }
+
+    @Test
+    fun unLadoQueNoExisteSeRechazaConMotivo() {
+        assertIs<GenerationOutcome.Rejected>(perimetro.build(params("b" to 0, "k" to 4), seed = 0L))
+        val sinLado = rechazado(perimetro, params("b" to 3, "k" to 0))
+        assertTrue(sinLado.reasons.any { it.contains("'k'") }, "El motivo tiene que señalar el lado: ${sinLado.reasons}")
+    }
+
+    @Test
     fun cadaPlantillaApuntaAUnaHabilidadDelGrafo() {
         val ids = ExerciseTemplates.all.map { it.id }
         assertEquals(ids.size, ids.toSet().size, "Dos plantillas con el mismo id no se pueden rastrear.")
 
         val skills = ExerciseTemplates.all.map { it.skill }
         assertEquals(skills.size, skills.toSet().size, "Si dos plantillas entrenan la misma habilidad, el plan no distingue.")
-        assertEquals(listOf("distributive-linear", "fraction-linear", "integer-ops", "two-step-linear"), ids.sorted())
+        assertEquals(
+            listOf("distributive-linear", "fraction-linear", "integer-ops", "rectangle-perimeter", "two-step-linear"),
+            ids.sorted(),
+        )
 
         assertEquals(ExerciseTemplates.byId("two-step-linear"), ExerciseTemplates.all.first { it.id == "two-step-linear" })
         assertNull(ExerciseTemplates.byId("no-existe"))

@@ -13,7 +13,9 @@ import mx.matica.math.printer.ExprPrinter
 import mx.matica.math.verify.VerificationOutcome
 import mx.matica.presentation.math.FractionViewModel
 import mx.matica.presentation.math.NumberLineModel
+import mx.matica.presentation.math.RectangleFigure
 import mx.matica.presentation.math.fractionModel
+import mx.matica.presentation.math.rectangleFigureOf
 
 /** Qué componente matemático le corresponde a este tipo de ejercicio. */
 enum class ExerciseSlot {
@@ -22,6 +24,7 @@ enum class ExerciseSlot {
     QUOTIENT_SPLIT,
     NUMBER_LINE,
     GRAPH,
+    GEOMETRY,
     VERIFICATION,
 }
 
@@ -47,9 +50,13 @@ data class ExerciseRenderPlan(
     val lines: List<PlotLine>,
     val verification: List<String>,
     val verified: Boolean,
+    val figure: RectangleFigure?,
 ) {
     /** Sin dos rectas reales no hay gráfica honesta que mostrar: la pantalla omite el plano. */
     val hasGraph: Boolean get() = ExerciseSlot.GRAPH in slots && lines.size == 2
+
+    /** La figura existe sólo si la ecuación escrita se lee como rectángulo; si no, no se dibuja. */
+    val hasGeometry: Boolean get() = ExerciseSlot.GEOMETRY in slots && figure != null
 }
 
 internal data class TemplateSpec(val labelEs: String, val strategyEs: String, val slots: List<ExerciseSlot>)
@@ -62,6 +69,7 @@ private val TWO_STEP = TemplateSpec(
         ExerciseSlot.ANSWER_FRACTION,
         ExerciseSlot.NUMBER_LINE,
         ExerciseSlot.GRAPH,
+        ExerciseSlot.GEOMETRY,
         ExerciseSlot.VERIFICATION,
     ),
 )
@@ -74,6 +82,7 @@ private val DISTRIBUTIVE = TemplateSpec(
         ExerciseSlot.ANSWER_FRACTION,
         ExerciseSlot.NUMBER_LINE,
         ExerciseSlot.GRAPH,
+        ExerciseSlot.GEOMETRY,
         ExerciseSlot.VERIFICATION,
     ),
 )
@@ -91,6 +100,19 @@ private val FRACTION = TemplateSpec(
     ),
 )
 
+private val RECTANGLE_PERIMETER = TemplateSpec(
+    labelEs = "Rectángulo: el lado que falta en el perímetro",
+    strategyEs = "El perímetro suma los cuatro lados: dos veces el largo y dos veces el ancho. Despeja el lado que falta.",
+    slots = listOf(
+        ExerciseSlot.EQUATION,
+        ExerciseSlot.ANSWER_FRACTION,
+        ExerciseSlot.NUMBER_LINE,
+        ExerciseSlot.GRAPH,
+        ExerciseSlot.GEOMETRY,
+        ExerciseSlot.VERIFICATION,
+    ),
+)
+
 private val INTEGER_OPS = TemplateSpec(
     labelEs = "Enteros: producto de signos",
     strategyEs = "Primero el producto con su signo: menos por negativo da positivo. Después se suma en orden.",
@@ -103,13 +125,14 @@ private val INTEGER_OPS = TemplateSpec(
     ),
 )
 
-/** Las cuatro plantillas del MVP. `byId` coincide con `ExerciseTemplates` y la prueba lo ata. */
+/** Las plantillas del catálogo de render. `byId` coincide con `ExerciseTemplates` y la prueba lo ata. */
 object ExerciseRenderCatalog {
     private val specs: Map<String, TemplateSpec> = mapOf(
         "integer-ops" to INTEGER_OPS,
         "two-step-linear" to TWO_STEP,
         "distributive-linear" to DISTRIBUTIVE,
         "fraction-linear" to FRACTION,
+        "rectangle-perimeter" to RECTANGLE_PERIMETER,
     )
 
     val templateIds: List<String> get() = specs.keys.toList()
@@ -141,6 +164,7 @@ fun renderPlan(instance: ExerciseInstance, engine: MathEngine = MathEngine()): E
         verification = verificationLines(equation, instance.variable, instance.solution),
         verified = engine.verifySolution(instance.equationText, instance.variable, instance.solution)
             is VerificationOutcome.Satisfies,
+        figure = rectangleFigureOf(equation, instance.variable, instance.solution),
     )
 }
 
