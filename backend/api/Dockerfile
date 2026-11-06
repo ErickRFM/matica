@@ -1,7 +1,7 @@
 FROM eclipse-temurin:17-jdk AS builder
 WORKDIR /workspace
 COPY . .
-RUN chmod +x ./gradlew && ./gradlew :backend:api:installDist --no-daemon
+RUN chmod +x ./gradlew && ./gradlew -Pmatica.backendOnly=true :backend:api:installDist --no-daemon
 
 FROM eclipse-temurin:17-jre
 WORKDIR /opt/matica
