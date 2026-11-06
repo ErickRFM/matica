@@ -83,7 +83,7 @@ jobs:
         run: ./gradlew :shared:presentation:testAndroidHostTest --stacktrace
 
       - name: Backend Ktor (pruebas sin credenciales ni PostgreSQL)
-        run: ./gradlew :backend:api:test --stacktrace
+        run: ./gradlew -Pmatica.backendOnly=true :backend:api:test --stacktrace
 
       - name: Compilar APK debug
         run: ./gradlew :apps:androidApp:assembleDebug --stacktrace
