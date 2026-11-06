@@ -1,6 +1,7 @@
 package mx.matica.math.ast
 
 import mx.matica.math.numeric.Rational
+import mx.matica.math.units.MeasurementUnit
 
 /**
  * AST tipado. Preserva la forma en que el estudiante escribió la expresión: la resta y el
@@ -10,6 +11,13 @@ import mx.matica.math.numeric.Rational
 sealed interface Expr {
     data class Const(val value: Rational) : Expr
     data class Var(val name: String) : Expr
+
+    /**
+     * Magnitud con unidad: `3 km`, `1/2 m`, `2x km`. La unidad se cuelga del término completo y no
+     * del número pegado, porque `1/2 m` es medio metro y no `1/(2 m)`. El operando se conserva tal
+     * cual lo escribió el estudiante para que `render(parse(texto))` devuelva el mismo texto.
+     */
+    data class Quantity(val operand: Expr, val unit: MeasurementUnit) : Expr
 
     /** `a + b - c`: cada sumando conserva su operador. */
     data class Sum(val terms: List<Term>) : Expr {
@@ -42,6 +50,7 @@ sealed interface Expr {
 fun Expr.variables(): Set<String> = when (this) {
     is Expr.Var -> setOf(name)
     is Expr.Const -> emptySet()
+    is Expr.Quantity -> operand.variables()
     is Expr.Sum -> terms.flatMap { it.operand.variables() }.toSet()
     is Expr.Neg -> operand.variables()
     is Expr.Product -> factors.flatMap { it.operand.variables() }.toSet()
@@ -58,6 +67,7 @@ fun Expr.constant(value: Rational): Expr = Expr.Const(value)
 /** Descendientes directos, en el orden en que el estudiante los escribió. */
 private fun Expr.children(): List<Expr> = when (this) {
     is Expr.Const, is Expr.Var -> emptyList()
+    is Expr.Quantity -> listOf(operand)
     is Expr.Sum -> terms.map { it.operand }
     is Expr.Neg -> listOf(operand)
     is Expr.Product -> factors.map { it.operand }

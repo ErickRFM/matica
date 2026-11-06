@@ -3,6 +3,7 @@ package mx.matica.math
 import mx.matica.math.analysis.StepAnalyzer
 import mx.matica.math.analysis.StepVerdict
 import mx.matica.math.ast.Expr
+import mx.matica.math.ast.walk
 import mx.matica.math.domain.DomainRestrictions
 import mx.matica.math.domain.Restriction
 import mx.matica.math.eval.EvalOutcome
@@ -20,6 +21,9 @@ import mx.matica.math.printer.ExprPrinter
 import mx.matica.math.solve.LinearSolver
 import mx.matica.math.solve.SolveOutcome
 import mx.matica.math.verify.SolutionVerifier
+import mx.matica.math.units.DimensionalCheck
+import mx.matica.math.units.MeasurementUnit
+import mx.matica.math.units.Units
 import mx.matica.math.verify.VerificationOutcome
 
 /**
@@ -60,6 +64,43 @@ class MathEngine(
     fun verifySolution(input: String, variable: String, value: Rational): VerificationOutcome =
         SolutionVerifier.verify(input, variable, value)
 
+    /**
+     * Escribe una expresión con unidades en la unidad pedida: `3 km + 200 m` en `m` da `3200 m`.
+     * Sin unidad destino se elige la más fina presente en la entrada, porque `3.2 km` se lee peor en
+     * una pantalla que `3200 m` y porque el resultado sigue siendo exacto.
+     */
+    fun convert(input: String, toSymbol: String? = null): QuantityOutcome {
+        val expression = parseOrNull(input)
+            ?: return QuantityOutcome.Rejected("No se pudo leer '$input'.")
+        DimensionalCheck.problem(expression)?.let { return QuantityOutcome.Rejected(it) }
+
+        val quantities = expression.walk().filterIsInstance<Expr.Quantity>()
+        if (quantities.isEmpty()) {
+            return QuantityOutcome.Rejected("'$input' no lleva unidades, así que no hay nada que convertir.")
+        }
+        val familia = quantities.first().unit.dimension
+        val destino = if (toSymbol == null) {
+            Units.finest(quantities.map { it.unit })
+        } else {
+            val pedida = Units.bySymbol(toSymbol)
+                ?: return QuantityOutcome.Rejected("La unidad '$toSymbol' no está en el catálogo del motor.")
+            if (pedida.dimension != familia) {
+                return QuantityOutcome.Rejected(
+                    "'$input' es de ${familia.labelEs} y '$toSymbol' es de ${pedida.dimension.labelEs}.",
+                )
+            }
+            pedida
+        } ?: return QuantityOutcome.Rejected("No se reconoció ninguna unidad en '$input'.")
+
+        return when (val evaluated = Evaluator.evaluate(expression)) {
+            is EvalOutcome.Value -> QuantityOutcome.Ready(evaluated.value / destino.factorToBase, destino)
+            is EvalOutcome.Undefined -> QuantityOutcome.Rejected(evaluated.reason)
+            is EvalOutcome.Unsupported -> QuantityOutcome.Rejected(evaluated.reason)
+            is EvalOutcome.MissingVariable ->
+                QuantityOutcome.Rejected("Falta el valor de '${evaluated.variable}'; se convierte una cantidad cerrada.")
+        }
+    }
+
     /** Valida un paso del procedimiento entre dos líneas escritas por el estudiante. */
     fun checkStep(beforeText: String, afterText: String): StepVerdict = stepAnalyzer.analyze(beforeText, afterText)
 
@@ -92,3 +133,9 @@ class MathEngine(
 data class StepAssessment(val offline: StepVerdict, val remote: RemoteStep?)
 
 data class SolutionAssessment(val offline: SolveOutcome, val remote: RemoteSolutions?)
+
+/** Resultado de una conversión. `Rejected` dice por qué no hay resultado, nunca un número sospechoso. */
+sealed interface QuantityOutcome {
+    data class Ready(val value: Rational, val unit: MeasurementUnit) : QuantityOutcome
+    data class Rejected(val reason: String) : QuantityOutcome
+}

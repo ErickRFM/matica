@@ -70,6 +70,8 @@ Una lección interrumpida por cierre de app se reanuda desde el último intento 
 - Transformaciones: reglas con precondición y justificación (`add_to_both_sides`, `divide_both_sides_by` con requisito de divisor no nulo, `distribute`, `combine_like`, `simplify_fraction`).
 - Análisis de error: comparar paso anterior y paso actual determina la regla faltante o mal aplicada y produce una pista sin revelar la respuesta.
 - Dominio: los denominadores de la ecuación generan restricciones; una solución que viola una restricción se reporta como raíz extraña, no como solución.
+- Unidades (`math/units`): `Expr.Quantity` envuelve al **término completo**, así `1/2 m` es medio metro y no `1/(2 m)`. La tabla es cerrada (24 símbolos, cuatro familias) y el factor a la unidad base es `Rational`, nunca `Double`. `DimensionalCheck` corre antes del evaluador **y** antes del normalizador, porque ambos reducen todo a números: sin ese paso, `3 km + 2 s` daría `3002` y saldría una equivalencia falsa con aire de haber sido verificada. Un número o una incógnita sin unidad se leen en la unidad base de la familia presente — es la convención que deja verificar `3 km + x = 7 km → x = 4000` por sustitución.
+- Fuera de la tabla a propósito: unidades con desplazamiento (°C no es multiplicativa), día y año (colisionan con incógnitas escritas como `d`/`a`), y unidades elevadas o compuestas (`m²`, `km/h`), que se rechazan con mensaje en lugar de devolver un número con la familia equivocada.
 
 ## Cálculo ampliado con SymPy (contrato `matica.symbolic.v1`)
 

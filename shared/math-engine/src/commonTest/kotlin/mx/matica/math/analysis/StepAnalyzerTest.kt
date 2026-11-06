@@ -188,7 +188,7 @@ class StepAnalyzerTest {
         indeterminado("x^2=4", "x=-2")
 
         val fraccionAlgebraica = indeterminado("(x+1)/x = 2", "x+1 = 2")
-        assertContains(fraccionAlgebraica.reason, "polinomio")
+        assertContains(fraccionAlgebraica.reason, "fracción algebraica")
 
         // `sen(x)` no es `sen` multiplicado por `x`: el parser lo rechaza en vez de reinterpretarlo.
         assertIs<StepVerdict.SyntaxProblem>(paso("sen(x)=1/2", "x=pi/6"))
@@ -211,11 +211,15 @@ class StepAnalyzerTest {
     }
 
     @Test
-    fun lasUnidadesSonVariablesSinValidacionDimensional() {
-        // Limitación de B1-09: `km` y `m` se leen como incógnitas. El primer paso es algebraicamente
-        // válido, pero el motor NO comprueba que 3 km sean 3000 m: no hay análisis dimensional.
+    fun lasUnidadesSeValidanPorDimensionAdemasDePorAlgebra() {
+        // B1-09 estaba limitado a leer `km` y `m` como incógnitas. Ahora son unidades: el paso de
+        // conversión se aprueba porque 3 km y 3000 m valen lo mismo en la unidad base, y la variante
+        // invertida se rechaza porque 3000 km no son 3 m.
         valido("3 km = 3000 m", "km = 1000 m")
         assertFalse(paso("3 km = 3000 m", "3000 km = 3 m") is StepVerdict.Valid)
+        // Mezclar familias no es un error aritmético demostrable: el motor admite que no puede.
+        val mezcladas = indeterminado("3 km + 2 s = 5", "3 km + 2 s = 3002")
+        assertContains(mezcladas.reason, "mezcla familias distintas")
     }
 
     // ------------------------------------------------------------- sintaxis y habilidades

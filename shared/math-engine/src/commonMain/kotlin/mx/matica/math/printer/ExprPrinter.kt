@@ -21,6 +21,8 @@ object ExprPrinter {
         val rendered = when (expression) {
             is Expr.Const -> expression.value.toString()
             is Expr.Var -> expression.name
+            // La unidad se escribe al final del término completo: `1/2 m`, `2x km`.
+            is Expr.Quantity -> render(expression.operand, PRODUCT) + " " + expression.unit.symbol
             is Expr.Sum -> renderSum(expression)
             is Expr.Neg -> "-" + render(expression.operand, UNARY)
             is Expr.Product -> renderProduct(expression)
@@ -40,6 +42,7 @@ object ExprPrinter {
             is Expr.Quotient -> PRODUCT
             is Expr.Power -> POWER
             is Expr.Equals -> EQUALS
+            is Expr.Quantity -> PRODUCT
             else -> ATOM
         }
         return own < context
@@ -58,7 +61,14 @@ object ExprPrinter {
 
     private fun renderProduct(product: Expr.Product): String = buildString {
         product.factors.forEachIndexed { index, factor ->
-            val operand = render(factor.operand, PRODUCT + if (factor.explicit) 0 else 1)
+            val ultimo = index == product.factors.lastIndex
+            // Una unidad que no cierra el término necesita paréntesis: sin ellos `2 km*3` volvería a
+            // leerse como `2 · km · 3`, porque el analizador atadura la unidad al final del término.
+            val operand = if (factor.operand is Expr.Quantity && !ultimo) {
+                "(${render(factor.operand, TOP)})"
+            } else {
+                render(factor.operand, PRODUCT + if (factor.explicit) 0 else 1)
+            }
             when {
                 index == 0 -> append(operand)
                 factor.explicit -> append("*$operand")
