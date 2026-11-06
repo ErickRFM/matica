@@ -213,7 +213,7 @@ class MaticaWindowInsetsTest {
     private fun irAlReproductor() {
         rule.waitForIdle()
         pulsar("Entrar con una cuenta existente")
-        rule.onNodeWithText("Correo de la escuela").assertIsDisplayed()
+        rule.onNodeWithText("Correo electrónico").assertIsDisplayed()
         pulsar("Seguir con perfil local")
         rule.onNodeWithText("Abrir mi ruta").assertIsDisplayed()
         pulsar("Abrir mi ruta")
