@@ -79,6 +79,9 @@ private fun MaticaNavHost(session: MaticaSession, navigator: MaticaNavigator, re
     // El ajuste manual y el movimiento reducido del sistema dan el mismo efecto: fundido corto, sin desplazamiento.
     val quiet = reduceTransitions || style.reduced
     val overlay = if (navigator.current.isOverlay) navigator.current else null
+    // Un enlace profundo puede traer sólo la hoja (`lesson/X/1/hints`) sin pantalla debajo. Entonces la
+    // hoja ya es el `base` y dibujarla además como capa de fondo la pinta dos veces encima de sí misma.
+    val baseRoute = if (overlay != null && navigator.base == overlay) null else navigator.base
     // `Surface` y no un `Column` suelto: sin él el fondo que se ve es el de la ventana del sistema,
     // no el token medido del tema, y cambiar de tema en Ajustes no pinta nada (así lo detectó la
     // prueba de instrumentación sobre el píxel).
@@ -89,7 +92,7 @@ private fun MaticaNavHost(session: MaticaSession, navigator: MaticaNavigator, re
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             AnimatedContent(
-                targetState = RouteTarget(navigator.base, navigator.baseDepth),
+                targetState = RouteTarget(baseRoute, navigator.baseDepth),
                 transitionSpec = {
                     val (enter, exit) = screenSpec(quiet, style, forward = targetState.depth >= initialState.depth)
                     enter togetherWith exit

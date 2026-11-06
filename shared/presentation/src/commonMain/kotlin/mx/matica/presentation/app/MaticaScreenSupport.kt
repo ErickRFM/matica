@@ -4,6 +4,8 @@ import mx.matica.math.MathEngine
 import mx.matica.math.analysis.StepError
 import mx.matica.math.analysis.StepVerdict
 import mx.matica.math.ast.Expr
+import mx.matica.math.ast.isConstantExpression
+import mx.matica.math.eval.EvalOutcome
 import mx.matica.math.numeric.Rational
 import mx.matica.math.verify.VerificationOutcome
 import mx.matica.presentation.exercise.ExerciseRenderPlan
@@ -16,13 +18,18 @@ import mx.matica.presentation.math.samplePlot
  * Lectura de un número escrito por el estudiante. Se apoya en el motor y no en `toDouble`: «3/4» debe
  * llegar exacto, y «3,x» o «hola» devuelven `null` en lugar de un número aproximado que la pantalla
  * aceptaría como respuesta.
+ *
+ * El AST conserva la forma tal como se escribió (`-9` es `Neg(Const(9))`, no `Const(-9)`), así que la
+ * única manera de reconocer un número es evaluar la expresión: mirar `Expr.Const` devolvía `null`
+ * para los negativos y las fracciones que la propia pantalla promete aceptar.
  */
 fun parseNumber(math: MathEngine, text: String): Rational? {
-    val expression = math.parseOrNull(text.trim()) ?: return null
-    return when (expression) {
-        is Expr.Const -> expression.value
-        else -> null
-    }
+    val trimmed = text.trim()
+    if (trimmed.isEmpty()) return null
+    val expression = math.parseOrNull(trimmed) ?: return null
+    if (expression is Expr.Equals || expression is Expr.Quantity) return null
+    if (!expression.isConstantExpression()) return null
+    return (math.evaluate(trimmed) as? EvalOutcome.Value)?.value
 }
 
 /**

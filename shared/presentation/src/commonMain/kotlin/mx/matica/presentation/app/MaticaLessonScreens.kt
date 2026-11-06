@@ -428,6 +428,7 @@ private fun ExerciseBody(
     navigator: MaticaNavigator,
 ) {
     var picked by rememberSaveable { mutableStateOf("") }
+    var revealed by rememberSaveable { mutableStateOf(false) }
     val selected = parseNumber(session.math, picked) ?: plan.solution
 
     MaticaCard {
@@ -444,19 +445,9 @@ private fun ExerciseBody(
                 onValueChange = { value -> picked = nearestTick(value, plan.numberLine.ticks).toString() },
             )
             MaticaCaption("Arrastra o usa las flechas. El valor se engancha a la marca más cercana: la recta no inventa puntos.")
-            Row(horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.sm), modifier = Modifier.fillMaxWidth()) {
-                MaticaIconButton(
-                    icon = MaticaIcon.BACK,
-                    contentDescription = "Marca anterior",
-                    onClick = { picked = stepTick(plan, selected, -1).toString() },
-                )
-                Text("Marcado: $selected", modifier = Modifier.weight(1f).padding(horizontal = MaticaSpacing.sm))
-                MaticaIconButton(
-                    icon = MaticaIcon.FORWARD,
-                    contentDescription = "Marca siguiente",
-                    onClick = { picked = stepTick(plan, selected, 1).toString() },
-                )
-            }
+            // `NumberLineView` ya expone sus dos flechas con estas etiquetas; repetir aquí los botones
+            // duplicaba el control y hacía que un lector de pantalla anunciara «Marca siguiente» dos veces.
+            Text("Marcado: $selected", modifier = Modifier.fillMaxWidth().padding(horizontal = MaticaSpacing.sm))
         }
     }
 
@@ -510,10 +501,22 @@ private fun ExerciseBody(
         }
         MaticaButton(
             label = "Mostrar la solución",
-            onClick = { picked = (session.solutionOf(plan) ?: plan.solution).toString() },
+            onClick = {
+                picked = (session.solutionOf(plan) ?: plan.solution).toString()
+                revealed = true
+            },
             variant = MaticaButtonVariant.TEXT,
             fullWidth = true,
         )
+    }
+
+    // El plan pide la solución como fracción, pero pintarla siempre la dejaba a la vista antes de que el
+    // estudiante escribiera nada: sólo se muestra cuando él pide verla.
+    if (revealed && ExerciseSlot.ANSWER_FRACTION in plan.slots) {
+        MaticaSectionHeader("La solución como fracción")
+        MaticaCard {
+            FractionView(value = plan.solution, asMixed = true, modifier = Modifier.fillMaxWidth())
+        }
     }
 
     Row(horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.sm), modifier = Modifier.fillMaxWidth().padding(bottom = MaticaSpacing.md)) {
@@ -529,14 +532,6 @@ private fun ExerciseBody(
             modifier = Modifier.weight(1f),
         )
     }
-    FractionView(value = plan.solution, asMixed = true, modifier = Modifier.fillMaxWidth())
 }
 
 private fun templateIdOf(plan: ExerciseRenderPlan): String = plan.templateId
-
-/** Salto entre marcas reales de la recta, en la dirección pedida. */
-private fun stepTick(plan: ExerciseRenderPlan, current: Rational, direction: Int): Rational {
-    val ticks = plan.numberLine.orderedTicks
-    val index = ticks.indexOf(nearestTick(current, ticks)).coerceAtLeast(0)
-    return ticks[(index + direction).coerceIn(ticks.indices)]
-}
