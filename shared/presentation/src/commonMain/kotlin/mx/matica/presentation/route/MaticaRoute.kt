@@ -1,5 +1,6 @@
 package mx.matica.presentation.route
 
+import mx.matica.exercises.ExerciseTemplates
 import mx.matica.math.skills.SkillId
 
 /**
@@ -80,8 +81,13 @@ sealed class MaticaRoute(val path: String) {
 
         private val SKILL_NAMES: Set<String> = SkillId.entries.map { it.name }.toSet()
 
-        /** Plantillas conocidas; `parse` rechaza las que no existen en lugar de inventar un ejercicio. */
-        val KNOWN_TEMPLATES: Set<String> = setOf("two-step-linear", "distributive-linear", "fraction-linear")
+        /**
+         * Plantillas conocidas; `parse` rechaza las que no existen en lugar de inventar un ejercicio.
+         * Se deriva del catálogo de `:shared:exercises` y no de una lista a mano: la lista escrita a
+         * mano quedó obsoleta el día que el currículo añadió `integer-ops`, y esa plantilla dejó de
+         * poder abrirse por enlace ni desde «Practicar sin grupo».
+         */
+        val KNOWN_TEMPLATES: Set<String> = ExerciseTemplates.all.mapTo(LinkedHashSet()) { it.id }
 
         fun parse(path: String): MaticaRoute? {
             val parts = path.trim('/').split('/')

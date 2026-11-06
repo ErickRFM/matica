@@ -26,6 +26,7 @@ import mx.matica.math.numeric.Rational
 import mx.matica.math.parser.ParseOutcome
 import mx.matica.presentation.app.MaticaApp
 import mx.matica.presentation.app.MaticaSession
+import mx.matica.presentation.exercise.ExerciseSlot
 import mx.matica.presentation.math.EquationView
 import mx.matica.presentation.math.FractionView
 import mx.matica.presentation.math.NumberLineModel
@@ -99,7 +100,7 @@ class MaticaMathComponentsTest {
     }
 
     @Test
-    fun losTresTiposDePlantillaSeDibujanConSusComponentes() {
+    fun lasPlantillasDelCatalogoSeDibujanConSusComponentes() {
         var route by mutableStateOf<MaticaRoute>(MaticaRoute.Practice(TEMPLATE, 1L))
         val session = session()
         rule.setContent { MaticaApp(session = session, navigator = MaticaNavigator(route)) }
@@ -115,7 +116,8 @@ class MaticaMathComponentsTest {
                 rule.onNode(hasContentDescription("Gráfica en el plano", substring = true))
                     .assertPresent("el plano de $template")
             } else {
-                rule.onNode(hasText("el plano se omite", substring = true)).assertPresent("el aviso de omisión")
+                rule.onNode(hasText("el plano se omite", substring = true, ignoreCase = true))
+                    .assertPresent("el aviso de omisión")
             }
             // La ecuación que se pinta tiene que volver a parsear: la UI no dibuja basura.
             assertTrue(
@@ -124,9 +126,18 @@ class MaticaMathComponentsTest {
             )
 
             val mixedAnswer = fractionModel(plan.solution, asMixed = true).accessibleText
-            rule.onNode(hasContentDescription(mixedAnswer)).assertAbsent("la respuesta de $template")
-            revealSolution()
-            rule.onNode(hasContentDescription(mixedAnswer)).assertShownAfterScroll()
+            if (ExerciseSlot.ANSWER_FRACTION in plan.slots) {
+                rule.onNode(hasContentDescription(mixedAnswer)).assertAbsent("la respuesta de $template")
+                revealSolution()
+                rule.onNode(hasContentDescription(mixedAnswer)).assertShownAfterScroll()
+            } else {
+                // El plan no pide fracción: la solución se comprueba en la recta, donde el marcador
+                // tiene que caer en el valor exacto que el motor leyó del campo, y la fracción mixta
+                // no aparece ni siquiera después de revelarla.
+                revealSolution()
+                rule.onNode(hasText("Marcado: ${plan.solution}")).assertPresent("la recta marcada en $template")
+                rule.onNode(hasContentDescription(mixedAnswer)).assertAbsent("la fracción que $template no pide")
+            }
         }
     }
 

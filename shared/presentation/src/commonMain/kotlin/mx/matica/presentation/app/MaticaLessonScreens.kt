@@ -466,6 +466,13 @@ private fun ExerciseBody(
             "Sólo se dibuja el lado izquierdo. La otra recta es ${plan.lines.last().slope}·${plan.variable} + " +
                 "${plan.lines.last().intercept}: si no son rectas, el plano se omite en lugar de fingirse.",
         )
+    } else {
+        // El plan decide no dibujar el plano, pero el silencio dejaba la sección cortada sin motivo: la
+        // pantalla lo dice en lugar de hacer desaparecer el apartado.
+        MaticaCaption(
+            "El plano se omite: sin dos rectas reales no hay gráfica honesta que dibujar, y aquí la " +
+                "incógnita ya queda despejada en la propia ecuación.",
+        )
     }
 
     if (ExerciseSlot.QUOTIENT_SPLIT in plan.slots) {

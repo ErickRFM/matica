@@ -23,7 +23,7 @@ Resultado leído por XML (`apps/androidApp/build/outputs/androidTest-results/con
 | `MaticaNavigatorRestoreTest` | 1 | `MainActivity.recreate()` devuelve la pila `welcome → home → route → skill` y cada atrás deshace un nivel |
 | `MaticaStateViewsTest` | 5 | carga/vacío/error/offline/éxito dibujados y el reintento invocado |
 | `MaticaMotionTest` | 3 | escala 0 llega al compositor con fundido topado a 150 ms; «Transiciones reducidas» y «Ninguna» guardados sin dejar pantalla vacía |
-| `MaticaMathComponentsTest` | 6 | ecuación/fracción/recta/plano desde el `ExerciseRenderPlan`, salto por marcas exactas, tres plantillas releeles por el motor y la fracción de la solución sólo tras pedirla |
+| `MaticaMathComponentsTest` | 6 | ecuación/fracción/recta/plano desde el `ExerciseRenderPlan`, salto por marcas exactas, las **cuatro** plantillas del catálogo releeles por el motor y la fracción de la solución sólo tras pedirla |
 
 Batería unitaria del mismo commit, por target (`build/test-results/**`, leído con script y no a mano):
 
@@ -34,9 +34,9 @@ Batería unitaria del mismo commit, por target (`build/test-results/**`, leído 
 | `:shared:learning-engine` | 66 / 0 | 66 / 0 |
 | `:shared:exercises` | 25 / 0 | 25 / 0 |
 | `:design-system` | 23 / 0 | 23 / 0 |
-| `:shared:presentation` | 104 / 0 | 104 / 0 |
+| `:shared:presentation` | 105 / 0 | 105 / 0 |
 
-Más `:apps:androidApp:assembleDebug` en verde. Las 2 nuevas de presentación son `ParseNumberTest`.
+Más `:apps:androidApp:assembleDebug` en verde. Las 2 nuevas de presentación son `ParseNumberTest` y el invariante `lasPlantillasConocidasSonLasDelCatalogo` en `MaticaRouteTest`.
 
 ## Cuatro defectos que encontró la tanda (arreglados en el código, no en las aserciones)
 
@@ -56,3 +56,14 @@ Más `:apps:androidApp:assembleDebug` en verde. Las 2 nuevas de presentación so
 ## Trampa de método que quedó documentada
 
 Probar la rotación con `createAndroidComposeRule<ComponentActivity>()` + `rule.setContent { ... }` **no puede funcionar**: el `setContent` de la prueba no forma parte del `savedInstanceState`, así que la actividad nueva nace sin composición y el `Saver` nunca se ejercita. La prueba real pasa por el host de la app (`createAndroidComposeRule<MainActivity>()` + `recreate()`), y ahí apareció otro hecho del grafo: en un perfil recién creado el único nudo tocable del mapa es `INTEGER_OPERATIONS`, porque `BALANCE_PRINCIPLE` exige distribuir, recoger semejantes y signos — pulsar un nudo bloqueado no navega, y la prueba debe recorrer el camino que el dedo sí puede recorrer.
+
+## Segundo paso: cerrar el hueco de `integer-ops` que la propia tanda documentó
+
+El cierre de B2-04 dejó escrito que `integer-ops` tenía plan pero no era destino de `Practice`. Se convirtió ese hueco en aserción y luego se arregló el código, en ese orden:
+
+1. **Invariante unitario** — `MaticaRouteTest.lasPlantillasConocidasSonLasDelCatalogo` exige `KNOWN_TEMPLATES == ExerciseTemplates.all.map { it.id }` y que cada id del catálogo parseé como `Practice(id, 12)`. **Falló antes del arreglo** (el catálogo tenía 4 ids y la lista a mano 3), que es la evidencia de que el hueco era real y no teórico.
+2. **Arreglo en producción** — `shared/presentation/src/commonMain/kotlin/mx/matica/presentation/route/MaticaRoute.kt:90` deriva `KNOWN_TEMPLATES` del catálogo de `:shared:exercises` con `mapTo(LinkedHashSet())`, conservando el orden del currículo. La lista escrita a mano quedó eliminada: era la causa del desfase, no un detalle olvidado.
+3. **Prueba en dispositivo** — el bucle `lasPlantillasDelCatalogoSeDibujanConSusComponentes` recorre ahora las **cuatro** plantillas reales, no tres nombradas en la prueba. Salió a la luz un segundo defecto de UI al ampliarse la cobertura: `ExerciseBody` pintaba el plano `if (plan.hasGraph)` sin rama `else`, así que en `integer-ops` la sección desaparecía en silencio; ahora hay un aviso explícito (`MaticaLessonScreens.kt:472`) y la prueba lo exige.
+4. **Ajuste de aserción, no de expectativa** — el bucle asumía que toda plantilla declara `ANSWER_FRACTION`. `integer-ops` declara `EQUATION, NUMBER_LINE, VERIFICATION` porque su solución es un entero y pintarla como fracción mixta era ruido. La prueba se bifurcó por el propio plan: con fracción, se exige la `FractionView` tras «Mostrar la solución»; sin fracción, se exige `Marcado: <solución>` en la recta y se comprueba que la fracción mixta **no** aparece ni revelando.
+
+Resultado de la re-verificación completa: `<testsuites tests="27" failures="0" errors="0">` en el mismo AVD y 723 pruebas unitarias (362 × 2 targets, con la diferencia habitual de `math-remote`: 11 en `jvmTest` por el caso que sólo corre en JVM) sin fallos.

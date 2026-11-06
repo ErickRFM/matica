@@ -1,5 +1,6 @@
 package mx.matica.presentation.route
 
+import mx.matica.exercises.ExerciseTemplates
 import mx.matica.math.skills.SkillId
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -40,6 +41,24 @@ class MaticaRouteTest {
     fun unaPlantillaInventadaNoAbreLaPractica() {
         assertNull(MaticaRoute.parse("practice/plantilla-magic/12"))
         assertNotNull(MaticaRoute.parse("practice/fraction-linear/12"))
+    }
+
+    /**
+     * La ruta de práctica conoce exactamente las plantillas que existen. Escrito a mano, este conjunto
+     * quedó obsoleto cuando el currículo añadió `integer-ops` y la plantilla dejó de ser alcanzable por
+     * enlace; la aserción es el seguro contra ese olvido.
+     */
+    @Test
+    fun lasPlantillasConocidasSonLasDelCatalogo() {
+        val catalogIds = ExerciseTemplates.all.map { it.id }.toSet()
+        assertEquals(catalogIds, MaticaRoute.KNOWN_TEMPLATES)
+        catalogIds.forEach { id ->
+            assertEquals(
+                MaticaRoute.Practice(id, 12L),
+                MaticaRoute.parse("practice/$id/12"),
+                "El catálogo tiene '$id' pero la ruta la rechaza.",
+            )
+        }
     }
 
     @Test
