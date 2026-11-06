@@ -37,6 +37,9 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Backend Ktor (pruebas sin credenciales ni PostgreSQL)
+        run: ./gradlew -Pmatica.backendOnly=true :backend:api:test --stacktrace
+
       - name: Pruebas del servicio simbólico (contrato y seguridad)
         working-directory: tools/symbolic-service
         run: |
@@ -81,9 +84,6 @@ jobs:
 
       - name: Pruebas de rutas, sesión y renderizador (target Android, host)
         run: ./gradlew :shared:presentation:testAndroidHostTest --stacktrace
-
-      - name: Backend Ktor (pruebas sin credenciales ni PostgreSQL)
-        run: ./gradlew -Pmatica.backendOnly=true :backend:api:test --stacktrace
 
       - name: Compilar APK debug
         run: ./gradlew :apps:androidApp:assembleDebug --stacktrace
