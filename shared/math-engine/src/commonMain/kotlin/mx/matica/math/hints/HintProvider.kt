@@ -127,6 +127,8 @@ class HintProvider {
         is Expr.Quotient -> Expr.Quotient(rewrite(expression.numerator), rewrite(expression.denominator))
         is Expr.Power -> Expr.Power(rewrite(expression.base), rewrite(expression.exponent))
         is Expr.Percent -> Expr.Percent(rewrite(expression.operand))
+        // La unidad acompaña a la reescritura: de `3 km + x = 7 km` sale `x = 7 km - 3 km`, no `x = 7 - 3`.
+        is Expr.Quantity -> Expr.Quantity(rewrite(expression.operand), expression.unit)
         is Expr.Equals -> Expr.Equals(rewrite(expression.left), rewrite(expression.right))
     }
 

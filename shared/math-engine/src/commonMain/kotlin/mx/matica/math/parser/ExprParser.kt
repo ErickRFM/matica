@@ -3,6 +3,8 @@ package mx.matica.math.parser
 import com.ionspin.kotlin.bignum.integer.BigInteger
 import mx.matica.math.ast.Expr
 import mx.matica.math.numeric.Rational
+import mx.matica.math.units.MeasurementUnit
+import mx.matica.math.units.Units
 
 sealed interface ParseOutcome {
     data class Success(val expression: Expr) : ParseOutcome
@@ -81,6 +83,7 @@ class ExprParser(private val input: String) {
     private fun parseTerm(): Expr {
         val numerator = mutableListOf(Expr.Product.Factor(explicit = true, operand = parseUnary()))
         val denominator = mutableListOf<Expr.Product.Factor>()
+        var unidad: MeasurementUnit? = null
 
         while (true) {
             when (peek().kind) {
@@ -95,15 +98,44 @@ class ExprParser(private val input: String) {
                 }
 
                 TokenKind.NUMBER, TokenKind.IDENT, TokenKind.LPAREN -> {
-                    val lastOperand = (denominator.lastOrNull()?.operand ?: numerator.last().operand)
-                    if (lastOperand is Expr.Const && peek().kind == TokenKind.NUMBER) {
-                        throw MathSyntaxException(
-                            peek().position,
-                            "Dos números seguidos sin operador.",
-                            "Falta un operador: escribe 2*3, o una fracción como 1/2 en lugar de 1 1/2.",
-                        )
+                    val candidate = peek()
+                    val unidadCandidata = if (candidate.kind == TokenKind.IDENT) Units.bySymbol(candidate.text) else null
+                    if (unidadCandidata != null && terminaTermino(tokens[cursor + 1].kind)) {
+                        if (unidad != null) {
+                            throw MathSyntaxException(
+                                candidate.position,
+                                "El término lleva dos unidades.",
+                                "Escribe una sola unidad al final del término, por ejemplo 3 km + 200 m.",
+                            )
+                        }
+                        advance()
+                        unidad = unidadCandidata
+                    } else {
+                        if (unidadCandidata != null) {
+                            // Una unidad que no cierra el término no puede interpretarse sin adivinar:
+                            // `2 m * 3 m` pide un metro cuadrado que la tabla no tiene, y leer `m` como
+                            // incógnita daría un ejercicio distinto al que el estudiante escribió.
+                            throw MathSyntaxException(
+                                candidate.position,
+                                if (tokens[cursor + 1].kind == TokenKind.CARET) {
+                                    "El motor no representa unidades elevadas como '${candidate.text}²'."
+                                } else {
+                                    "'${candidate.text}' es una unidad y va al final del término; " +
+                                        "el motor no multiplica unidades entre sí."
+                                },
+                                "Escribe la conversión con unidades simples, por ejemplo 1 km = 1000 m.",
+                            )
+                        }
+                        val lastOperand = (denominator.lastOrNull()?.operand ?: numerator.last().operand)
+                        if (lastOperand is Expr.Const && candidate.kind == TokenKind.NUMBER) {
+                            throw MathSyntaxException(
+                                candidate.position,
+                                "Dos números seguidos sin operador.",
+                                "Falta un operador: escribe 2*3, o una fracción como 1/2 en lugar de 1 1/2.",
+                            )
+                        }
+                        numerator += Expr.Product.Factor(explicit = false, operand = parseUnary())
                     }
-                    numerator += Expr.Product.Factor(explicit = false, operand = parseUnary())
                 }
 
                 else -> break
@@ -111,9 +143,19 @@ class ExprParser(private val input: String) {
         }
 
         val top = if (numerator.size == 1) numerator.single().operand else Expr.Product(numerator)
-        if (denominator.isEmpty()) return top
+        if (denominator.isEmpty()) return conUnidad(top, unidad)
         val bottom = if (denominator.size == 1) denominator.single().operand else Expr.Product(denominator)
-        return Expr.Quotient(top, bottom)
+        // La unidad envuelve al cociente completo: `1/2 m` es medio metro, no `1/(2 m)`.
+        return conUnidad(Expr.Quotient(top, bottom), unidad)
+    }
+
+    private fun conUnidad(expression: Expr, unidad: MeasurementUnit?): Expr =
+        if (unidad == null) expression else Expr.Quantity(expression, unidad)
+
+    /** Tokens que cierran un término: después de la unidad ya no puede venir otro factor. */
+    private fun terminaTermino(kind: TokenKind): Boolean = when (kind) {
+        TokenKind.PLUS, TokenKind.MINUS, TokenKind.EQUALS, TokenKind.RPAREN, TokenKind.EOF -> true
+        else -> false
     }
 
     private fun parseUnary(): Expr = when (peek().kind) {
@@ -156,7 +198,15 @@ class ExprParser(private val input: String) {
                         "Escribe solo expresiones con números, variables y los operadores + - * / ^ %.",
                     )
                 }
-                Expr.Var(token.text)
+                val unidad = Units.bySymbol(token.text)
+                // `km = 1000 m` es la forma en que un libro escribe una regla de conversión: la
+                // unidad sola vale una vez su magnitud. Sólo cuando la unidad cierra el término, para
+                // no robarle la letra a una incógnita que siga viva dentro del producto.
+                if (unidad != null && terminaTermino(peek().kind)) {
+                    Expr.Quantity(Expr.Const(Rational.ONE), unidad)
+                } else {
+                    Expr.Var(token.text)
+                }
             }
 
             TokenKind.LPAREN -> {

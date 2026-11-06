@@ -18,9 +18,21 @@ Orden de prioridad fijado por el prompt maestro, y usado para resolver conflicto
 | `:shared:learning-engine` | KMP (`jvm` + `android`) | Grafo de habilidades y prerrequisitos, nivel de dominio medible, escalonera de repaso espaciado y plan de estudio. Consume los veredictos de `:shared:math-engine`; **no calcula matemática**. |
 | `:shared:exercises` | KMP (`jvm` + `android`) | Plantillas parametrizadas y generador determinista por semilla. Escribe la ecuación desde su solución y solo emite lo que `MathEngine` relee, resuelve y verifica por sustitución. |
 | `:design-system` | KMP (`jvm` + `android`) con Compose | Paleta cruda, contraste WCAG 2.2 medible, escala tipográfica, espaciado de 4 dp, radios y los dos `ColorScheme` + colores semánticos. No conoce pantallas ni dominio. |
+| `:shared:presentation` | KMP (`jvm` + `android`) con Compose | Las 18 rutas y sus pantallas, el navegador con pila serializable, el estado vivo de la sesión (`MaticaSession`), el renderizador de ejercicios y los componentes matemáticos interactivos. Consume las fachadas; **no decide matemática ni dominio**. |
 | `tools/symbolic-service` | Python + FastAPI + SymPy | Servicio auxiliar aislado. Solo calcula lo que Kotlin no demuestra offline, sobre un AST tipado; nunca recibe texto del estudiante. |
 
-Previsto y todavía **no creado** (se crea con código funcional, nunca vacío): `shared/core/{common,models,networking,database}`, `shared/gamification`, `shared/sync`, `shared/presentation`, `features/{onboarding,authentication,home,learning-path,lessons,practice,rewards,profile,classrooms}`, `backend/api`.
+Previsto y todavía **no creado** (se crea con código funcional, nunca vacío): `shared/core/{common,models,networking,database}`, `shared/gamification`, `shared/sync`, `features/{onboarding,authentication,home,learning-path,lessons,practice,rewards,profile,classrooms}`, `backend/api`.
+
+## Desviación documentada: una sola capa de presentación
+
+El plano inicial repartía la UI en `features/*` (una pantalla por módulo) sobre `androidx.navigation`. En la práctica se ha agrupado todo en `:shared:presentation` con una pila propia (`MaticaNavigator` + `MaticaRoute`), y la decisión tiene un motivo verificable:
+
+- **Navegación demostrable sin dispositivo.** `androidx.navigation` sólo existe en Android, así que «back desde la hoja de pistas regresa al reproductor» o «la pila sobrevive a la muerte del proceso» no podían entrar en `commonTest`. Con la pila serializada a `List<String>` las 18 rutas y sus transiciones se prueban en JVM y en el host Android.
+- **El mismo estado corre en prueba y en producción.** `MaticaSession` es una clase con `mutableStateOf`, no un `ViewModel`: las pruebas invocan exactamente las mismas funciones que los botones de las pantallas, así que una prueba verde significa que el botón hace algo. El plan original (`StateFlow` de ViewModel + intentos) sigue en pie para el Bloque 4 cuando haya backend; mientras no exista servidor, un ViewModel con repositorio falso sería decorado.
+- **Coste real.** `androidx.navigation.compose` y Koin siguen declarados en `:apps:androidApp` para el deep-link y el wiring futuro; `MainActivity` sólo monta el host, el `BackHandler` y nada de lógica.
+
+Cuando aparezca código que justifique separar módulos (equpos distintos, compilación incremental cara), la división es mecánica: cada carpeta de `presentation/app` ya es un `feature` candidato.
+
 
 ## Reglas de dependencias
 
@@ -58,6 +70,8 @@ Una lección interrumpida por cierre de app se reanuda desde el último intento 
 - Transformaciones: reglas con precondición y justificación (`add_to_both_sides`, `divide_both_sides_by` con requisito de divisor no nulo, `distribute`, `combine_like`, `simplify_fraction`).
 - Análisis de error: comparar paso anterior y paso actual determina la regla faltante o mal aplicada y produce una pista sin revelar la respuesta.
 - Dominio: los denominadores de la ecuación generan restricciones; una solución que viola una restricción se reporta como raíz extraña, no como solución.
+- Unidades (`math/units`): `Expr.Quantity` envuelve al **término completo**, así `1/2 m` es medio metro y no `1/(2 m)`. La tabla es cerrada (24 símbolos, cuatro familias) y el factor a la unidad base es `Rational`, nunca `Double`. `DimensionalCheck` corre antes del evaluador **y** antes del normalizador, porque ambos reducen todo a números: sin ese paso, `3 km + 2 s` daría `3002` y saldría una equivalencia falsa con aire de haber sido verificada. Un número o una incógnita sin unidad se leen en la unidad base de la familia presente — es la convención que deja verificar `3 km + x = 7 km → x = 4000` por sustitución.
+- Fuera de la tabla a propósito: unidades con desplazamiento (°C no es multiplicativa), día y año (colisionan con incógnitas escritas como `d`/`a`), y unidades elevadas o compuestas (`m²`, `km/h`), que se rechazan con mensaje en lugar de devolver un número con la familia equivocada.
 
 ## Cálculo ampliado con SymPy (contrato `matica.symbolic.v1`)
 
@@ -100,6 +114,67 @@ delante del estudiante: la respuesta remera acompaña al veredicto offline, nunc
   abrió en modo lectura anónimo y Dev Mode exige sesión. El tema oscuro no existe en el diseño.
 - La familia tipográfica es `FontFamily.Default`: el repo no trae binarios de fuente y bajarlas
   rompería el build sin red. Cambiarla es una decisión de diseño, no de arquitectura.
+
+### Convenciones de la capa de pantalla (`:shared:presentation`)
+
+Reglas que nacieron de defectos medidos en el dispositivo el 2026-11-06, no de preferencias.
+Cada una tiene su prueba o su captura en `docs/evidence/ui-espaciado-animacion-navegacion-2026-11-06.md`;
+las de marca, arranque y login están en `docs/evidence/splash-login-2026-11-06.md`.
+
+- **Un componente del sistema aplica siempre el `modifier` que le pasa el llamador, y lo aplica
+  primero.** `MaticaButton` construía su propio ancho desde cero e ignoraba el `modifier`, así que el
+  `weight(1f)` de las filas de opciones se perdía: los cuatro botones se repartían el ancho por su
+  contenido y la última etiqueta se escribía una letra por renglón a 392,72 dp. La cadena correcta es
+  `modifier.then(widthModifier).heightIn(...)...`; posponer el `modifier` del llamador vuelve a
+  producir el mismo fallo.
+- **Dentro de una `MaticaCard` la variante es `OUTLINE`, nunca `NEUTRAL`.** El relleno del neutro en
+  claro es `BlueMist`, y `BlueMist` es también el `surfaceVariant` con el que `MaticaCard` se pinta:
+  el botón queda sin fondo ni borde sobre su propia tarjeta. `OUTLINE` existe precisamente para ese
+  fondo («borde sobre tarjeta»). Es una colisión de tokens, no un mal uso del color: si se añade otra
+  variante cuyo fondo coincida con `surfaceVariant`, el mismo defecto reaparece.
+- **Las rutas modales se dibujan como hoja opaca anclada abajo, no encima de la pantalla base.**
+  `HintSheet` ocupa el 78 % inferior sobre una `Surface` con el radio del sistema; la franja de arriba
+  sigue siendo scrim tocable. Pintar la ruta transparente sobre la base superpone las dos cabeceras en
+  la misma coordenada y deja ver el contenido de abajo a través de los huecos de las tarjetas.
+- **Una fila de cuatro etiquetas no cabe a 392 dp: se parte en dos filas de dos.** Cada pastilla
+  necesita ~103 dp (etiqueta + 24 de relleno por lado) y el teléfono deja ~90 por celda. Lo mismo con
+  tres opciones largas («2.º de secundaria» pide ~150 dp contra ~116 disponibles). La altura máxima por
+  etiqueta (≤ 56 dp) la sostiene `MaticaLayoutMetricsTest`.
+- **El párrafo va en `bodyLarge` y el titular en `titleMedium`.** `strategyEs` medía dos líneas con
+  peso de titular por encima de la propia ecuación; el peso tipográfico se usa para jerarquía, no para
+  énfasis decorativo.
+- **Toda ruta alcanzable tiene que tener una entrada en la UI.** `MaticaRoute.Profile` se probaba
+  montando la ruta a mano y convivía verde con la ausencia total de acceso, lo que hacía inalcanzable
+  el reinicio del perfil local. `MaticaScreenInventoryTest` prueba destinos; la accesibilidad del
+  destino la prueba un camino recorrido desde Hoy (`desdeHoySePuedeAbrirElPerfilLocal`).
+- **La aparición de las barras del sistema la decide el tema efectivo de la app, no el del sistema.**
+  `enableEdgeToEdge()` sin argumentos deja `SystemBarStyle.auto`, que sigue el ajuste del sistema: con
+  el móvil en claro y Mática en «Oscuro» los iconos se pintaban para fondo claro sobre `#0E1626` y
+  desaparecían. `MaticaTheme` llama a `MaticaSystemBarAppearance(darkTheme)` — `expect`/`actual` como
+  `platformMotionScale`, con el `actual` de JVM vacío — y escribe los dos flags del
+  `WindowInsetsControllerCompat` desde un `SideEffect`. Por eso `:design-system` tiene una dependencia
+  de `androidx.core` **sólo** en `androidMain`: si alguien vuelve a dejar el control en `auto`, la
+  prueba que lo mide es `MaticaWindowInsetsTest.elTemaOscuroDeLaAppTambienCambiaLaAparicionDeLasBarrasDelSistema`.
+- **La marca se dibuja, no se importa.** `MaticaMark` es un `Canvas` con la «M» como ruta y un punto de
+  llegada; su geometría vive en `maticaMarkSegments`/`maticaMarkPoint` (funciones puras) y el trazo
+  progresivo se prueba sin pantalla. El splash y el encabezado del login montan el mismo componente,
+  así que un cambio de paleta o de grosor no deja dos versiones de la marca desincronizadas. La única
+  pieza fuera de Compose es el icono de lanzador (`mipmap-anydpi-v26` + vectores), que el sistema
+  exige como recurso: sus colores repiten `#426BEB`/`#0E1626` a mano y hay que tocarlos si cambian los
+  tokens.
+- **El splash no finge una carga: es una capa opaca sobre la app ya compuesta.** No hay petición que
+  esperar, así que sólo aparece en arranque frío (`savedInstanceState == null`), la app se compone
+  debajo desde el primer frame y termina sola en ~1,1 s. El fondo se mezcla con `lerp` y no con
+  `copy(alpha)`: un color translúcido deja ver la pantalla de abajo y el arranque se lee como una capa
+  sucia. Un único `Animatable` alimenta trazo, mota, rótulo y barra (`splashPhases`), lo que evita
+  relojes paralelos al cambiar la escala de movimiento; `rememberSaveable` guarda que ya terminó, no
+  que empezó, así que rotar o cambiar de tema no lo repite.
+- **El login declara el bloqueo en vez de esconderlo.** La pantalla no puede parecer un formulario
+  roto: cabecera con atrás y píldora «Cuentas en preparación», los dos campos desactivados con su
+  motivo por campo y un CTA que sí funciona («Seguir con perfil local»). El título es `heading`, y
+  `elLoginExplicaQueLasCuentasEstanEnPreparacion` fija el encabezado semántico, la píldora, los dos
+  campos desactivados y el aviso; `MaticaSplashUiTest` fija que el splash anuncie progreso y termine
+  sin entrada del usuario.
 
 ## Motor de aprendizaje (Bloque 2)
 
@@ -158,8 +233,13 @@ AST tipado, y después el motor la comprueba.
 
 - Logs estructurados sin datos personales.
 - Pruebas: `kotlin-test` para reglas y motor, Turbine para flujos de estado, pruebas Compose para UI, `ktor-server-test-host` para la API, integración PostgreSQL real cuando el daemon de Docker o una instancia remota esté disponible.
-- **Instrumentación Compose (`MaticaThemeRenderTest`)**: tres casos que capturan el dibujo con `captureToImage()` y comparan el píxel renderizado contra `colorScheme.surface` y `colorScheme.background`. No entran en CI: el runner de GitHub no tiene dispositivo y un paso que no instala el APK de prueba devuelve `BUILD SUCCESSFUL` con `tests="0"`. Se ejecutan contra el POCO X7 Pro (Android 16) o, cuando HyperOS bloquea la instalación del APK de prueba, contra el emulador. La evidencia se lee por XML de resultados, nunca por el código de salida.
-- CI: `.github/workflows/ci.yml` corre `jvmTest` y `testAndroidHostTest` de `:shared:math-engine`, `:shared:math-remote`, `:shared:learning-engine`, `:shared:exercises` y `:design-system`, más `:apps:androidApp:assembleDebug` en `ubuntu-latest`, y publica el APK debug como artefacto. El job se llama `Verificación Full Kotlin` y ese nombre es estable porque la protección de `main` lo exige; añadir módulos agrega pasos, no renombra el check. El contraste Kotlin↔SymPy **no** entra en CI: necesita el servicio Python levantado, y un verde que dependa de un motor no desplegado sería una señal falsa. Los jobs de `lint` y `backend:test` se añaden cuando exista código que cubrir; crear un paso vacío daría una señal de verde sin significado. Sin fusión a `main` con CI en rojo. Consecuencia operativa: el filtro de ramas se evalúa en `opened`, `synchronize`, `reopened`, `push` a `main` y `workflow_dispatch`, así que **toda PR se abre contra `main`** — una PR apilada sobre otra rama de trabajo no genera ningún check y no tendría evidencia que consultar.
+- **Instrumentación Compose**: diez clases (`MaticaThemeRenderTest`, `MaticaAppUiTest`, `MaticaSplashUiTest`, `MaticaScreenInventoryTest`, `MaticaNavigatorRestoreTest`, `MaticaStateViewsTest`, `MaticaMotionTest`, `MaticaMathComponentsTest`, `MaticaWindowInsetsTest`, `MaticaLayoutMetricsTest`) con 45 casos ejecutados el 2026-11-06 sobre `companero_v12_qa_20261009(AVD) - 11` (`tests="45" failures="0" errors="0"`), incluidas las tres capturas con `captureToImage()` que comparan el píxel renderizado contra `colorScheme.surface` y `colorScheme.background`, las tres pruebas que leen `ViewCompat.getRootWindowInsets` de la ventana real, las cuatro que comparan rectángulos en píxeles contra los tokens de `MaticaLayout` y las tres nuevas de la tanda de marca (login declarado y splash montado). No entran en CI: el runner de GitHub no tiene dispositivo y un paso que no instala el APK de prueba devuelve `BUILD SUCCESSFUL` con `tests="0"`. Se ejecutan a mano y su evidencia se lee por XML de resultados, nunca por el código de salida. Cinco lecciones de método quedaron fijadas aquí: **la rotación no puede probarse montando el contenido desde la prueba** (el `setContent` del test no forma parte del `savedInstanceState`; hay que recrear `MainActivity`, el host real que llama a `rememberMaticaNavigator`), **un `assertIsDisplayed` sobre un elemento con `contentDescription` combinada da falso negativo** (se consulta `substring` o se lee el nodo por su texto interno), **una ventana ancha no se simula con `width`/`requiredWidth` dentro de la ventana de un teléfono** (ambos se recortan contra el máximo heredado y `boundsInWindow` recorta además al área visible; la medida honesta es girar la actividad y verificar primero que el área de composición supera de verdad el tope), **para medir el rectángulo de un botón hay que pedir el nodo clicable** (`hasText(opción)` solo devuelve el nodo de texto, cuyo bounds no coincide con el del botón; la selección honesta es `hasText(opción) and hasClickAction()`) y **una aserción nueva no vale nada si pasa con el defecto puesto**: las seis pruebas de la caminata se corrieron con su fix revertido — la hoja transparente devolvió «El título «Pistas» arranca en y=185.0 dentro de una zona de 2063.0 px», la variante dentro de tarjeta devolvió `tests="9" failures="1"` y la pareja final (grado en `TEXT` + chips de la cabecera reactivos) devolvió `tests="11" failures="2"` con los píxeles y los contadores en el mensaje — y sólo se dio por buena una aserción después de verla fallar por el motivo escrito.
+- **Cómo entra un número escrito por el estudiante**: `parseNumber` (`shared/presentation/app/MaticaScreenSupport.kt`) evalúa la expresión constante con `MathEngine` en lugar de mirar la forma del AST. El motor conserva la forma tal como se escribió — `-9` es `Neg(Const(9))` y `3/4` es un cociente, no `Const(-9)` ni `Const(3/4)` — así que aceptar sólo `Expr.Const` devolvía `null` para los mismos formatos que la propia pantalla promete aceptar, y el marcador de la recta numérica volvía a la solución sin avisar (las flechas parecían muertas). La puerta sigue siendo estrecha a propósito: variables, ecuaciones, magnitudes con unidad y divisiones por cero siguen dando `null`; lo que cambió es que un número negativo o una fracción ya son un número.
+- **Las plantillas que la ruta acepta se derivan del currículo**: `MaticaRoute.KNOWN_TEMPLATES` (`shared/presentation/route/MaticaRoute.kt`) se construye con `ExerciseTemplates.all.mapTo(LinkedHashSet()) { it.id }`. La lista escrita a mano funcionó hasta que el currículo añadió `integer-ops`: la plantilla tenía plan, se dibujaba en las lecciones y sin embargo `practice/integer-ops/<semilla>` se rechazaba, así que ni un enlace profundo ni «Practicar sin grupo» podían abrirla. El invariante `lasPlantillasConocidasSonLasDelCatalogo` en `MaticaRouteTest` es lo que impide que la separación vuelva a ocurrir en silencio; la dirección de dependencia sigue siendo la misma (`presentation` ya consumía `:shared:exercises` para el plan de render).
+- **El `content` de `MaticaStateView` es sólo para `Success`**: las otras variantes pintan su mensaje y punto, así que cualquier UI que deba verse siempre —incluido un formulario desactivado que explica el bloqueo— va como **hermana** del contenedor, no dentro de su `content`. `LoginScreen` y `ClassroomScreen` lo violaban y sus campos desactivados no se componían nunca; `losServiciosBloqueadosMuestranSuFormularioDesactivado` es el test que lo impide.
+- **El ritmo de un apartado lo da la agrupación, no el padding suelto**: `MaticaSection` (`shared/presentation/components/MaticaChips.kt`) pega el título a lo que titula con `sm` (8 dp) y el contenedor de la pantalla separa apartados con `lg` (16 dp); la cabecera individual quedó privada y sin relleno vertical porque con 8 dp por lado el título quedaba más lejos de su propia tarjeta que una tarjeta de la siguiente. `MaticaLayoutMetricsTest` mide los dos huecos en píxeles del dispositivo, y `MaticaStateRhythmTest` fija el ritmo único de los cuatro cuerpos de estado.
+- **El cuerpo de las pantallas se topea, no se estira**: `MaticaLayout.maxContentWidth` (640 dp) con `MaticaScreen` centrando el cuerpo; en un teléfono no se nota porque no lo alcanza, y en una ventana ancha evita que un renglón cruce toda la pantalla y el ojo pierda el inicio del siguiente. Los objetivos táctiles y los marcos de glifo salen del mismo token (`touchTarget` 48 dp, `glyphFrame` 24 dp) en lugar de números sueltos por componente.
+- CI: `.github/workflows/ci.yml` corre `jvmTest` y `testAndroidHostTest` de `:shared:math-engine`, `:shared:math-remote`, `:shared:learning-engine`, `:shared:exercises` y `:design-system`, después `:shared:presentation:compileKotlinJvm`, `:shared:presentation:jvmTest` y `:shared:presentation:testAndroidHostTest`, más `:apps:androidApp:assembleDebug` en `ubuntu-latest`, y publica el APK debug como artefacto. El job se llama `Verificación Full Kotlin` y ese nombre es estable porque la protección de `main` lo exige; añadir módulos agrega pasos, no renombra el check. Las pruebas de instrumentación Compose **no** entran en CI: necesitan un dispositivo o emulador, y correrían contra el hardware de quien programa; se ejecutan a mano y su estado se declara en la matriz. El contraste Kotlin↔SymPy **no** entra en CI: necesita el servicio Python levantado, y un verde que dependa de un motor no desplegado sería una señal falsa. Los jobs de `lint` y `backend:test` se añaden cuando exista código que cubrir; crear un paso vacío daría una señal de verde sin significado. Sin fusión a `main` con CI en rojo. Consecuencia operativa: el filtro de ramas se evalúa en `opened`, `synchronize`, `reopened`, `push` a `main` y `workflow_dispatch`, así que **toda PR se abre contra `main`** — una PR apilada sobre otra rama de trabajo no genera ningún check y no tendría evidencia que consultar.
 
 ## Pendientes de decisión justificada
 

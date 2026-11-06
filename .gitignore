@@ -18,7 +18,13 @@ google-services.json
 
 # Entorno Python del servicio simbólico auxiliar (no es código de la app)
 .venv*/
+
+# Worktrees temporales abiertos por el agente dentro del repositorio
+.qoder/worktrees/
 __pycache__/
 *.pyc
 .pytest_cache/
 tmp-audit/
+
+# Worktrees locales de integración (AGENTS.md los fija aquí; nunca son contenido del repo)
+.worktrees/

@@ -157,6 +157,17 @@ object SymbolicAstCodec {
 
         return when (expression) {
             is Expr.Const -> SymbolicEncoding.Ready(SymbolicNode.Const(toContractNumber(expression.value)))
+            // El contrato `matica.symbolic.v1` no tiene unidades: una magnitud aislada viaja como su
+            // número en la unidad base. Si dentro de la unidad hay una incógnita, el servicio no tiene
+            // cómo saber la familia dimensional, así que se queda en Kotlin en lugar de enviar un
+            // `2*x` que SymPy leería sin unidades.
+            is Expr.Quantity -> when (val operand = expression.operand) {
+                is Expr.Const -> SymbolicEncoding.Ready(
+                    SymbolicNode.Const(toContractNumber(operand.value * expression.unit.factorToBase)),
+                )
+
+                else -> SymbolicEncoding.Unsupported("Las unidades no viajan en el contrato symbolic.v1.")
+            }
             is Expr.Var -> {
                 if (!expression.name.matches(VARIABLE_PATTERN)) {
                     SymbolicEncoding.Unsupported("El nombre '${expression.name}' no cabe en el contrato (identificador corto en minúsculas).")

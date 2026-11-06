@@ -3,6 +3,7 @@ package mx.matica.math.poly
 import mx.matica.math.ast.Expr
 import mx.matica.math.numeric.Rational
 import mx.matica.math.printer.ExprPrinter
+import mx.matica.math.units.DimensionalCheck
 
 /**
  * Resultado de intentar escribir una expresión como polinomio exacto.
@@ -17,22 +18,37 @@ sealed interface PolyOutcome {
 object Normalizer {
     private const val MAX_EXPANSION = 8
 
-    fun of(expression: Expr): PolyOutcome = when (expression) {
-        is Expr.Const -> PolyOutcome.Value(Polynomial(mapOf(Monomial.CONSTANT to expression.value)))
-        is Expr.Var -> PolyOutcome.Value(Polynomial(mapOf(Monomial.of(expression.name) to Rational.ONE)))
-        is Expr.Sum -> sumOf(expression)
-        is Expr.Neg -> negateOf(expression.operand)
-        is Expr.Product -> productOf(expression)
-        is Expr.Quotient -> quotientOf(expression.numerator, expression.denominator)
-        is Expr.Power -> powerOf(expression)
-        is Expr.Percent -> scale(of(expression.operand), Rational.of(1, 100))
-        is Expr.Equals -> equationDifference(expression)
+    /**
+     * Igual que en el evaluador: la dimensión se comprueba antes de reducir a coeficientes. Un
+     * polinomio no guarda unidades, así que `3 km + 2 s` se escribiría como `3002` y de ahí saldría
+     * una equivalencia falsa con aire de haber sido verificada.
+     */
+    fun of(expression: Expr): PolyOutcome {
+        DimensionalCheck.problem(expression)?.let { return PolyOutcome.Blocked(it) }
+        return when (expression) {
+            is Expr.Const -> PolyOutcome.Value(Polynomial(mapOf(Monomial.CONSTANT to expression.value)))
+            is Expr.Quantity -> scale(of(expression.operand), expression.unit.factorToBase)
+
+            is Expr.Var -> PolyOutcome.Value(Polynomial(mapOf(Monomial.of(expression.name) to Rational.ONE)))
+            is Expr.Sum -> sumOf(expression)
+            is Expr.Neg -> negateOf(expression.operand)
+            is Expr.Product -> productOf(expression)
+            is Expr.Quotient -> quotientOf(expression.numerator, expression.denominator)
+            is Expr.Power -> powerOf(expression)
+            is Expr.Percent -> scale(of(expression.operand), Rational.of(1, 100))
+            is Expr.Equals -> equationDifference(expression)
+        }
     }
 
     /** L - R para una ecuación; para una expresión sin `=` devuelve su propio polinomio. */
-    fun ofEquation(expression: Expr): PolyOutcome = when (expression) {
-        is Expr.Equals -> equationDifference(expression)
-        else -> of(expression)
+    fun ofEquation(expression: Expr): PolyOutcome {
+        // La comprobación va también aquí: `of` mira cada lado por separado, y una ecuación que pone
+        // longitud de un lado y tiempo del otro (`3 km = 2 s`) pasaría por una ecuación con solución.
+        DimensionalCheck.problem(expression)?.let { return PolyOutcome.Blocked(it) }
+        return when (expression) {
+            is Expr.Equals -> equationDifference(expression)
+            else -> of(expression)
+        }
     }
 
     private fun sumOf(sum: Expr.Sum): PolyOutcome {
@@ -80,8 +96,12 @@ object Normalizer {
     }
 
     private fun quotientOf(numerator: Expr, denominator: Expr): PolyOutcome {
-        val dividend = of(numerator) as? PolyOutcome.Value ?: return PolyOutcome.Blocked(describeBlocked(numerator))
-        val divisor = of(denominator) as? PolyOutcome.Value ?: return PolyOutcome.Blocked(describeBlocked(denominator))
+        val dividendOutcome = of(numerator)
+        val dividend = dividendOutcome as? PolyOutcome.Value
+            ?: return PolyOutcome.Blocked(blockedReason(dividendOutcome, numerator))
+        val divisorOutcome = of(denominator)
+        val divisor = divisorOutcome as? PolyOutcome.Value
+            ?: return PolyOutcome.Blocked(blockedReason(divisorOutcome, denominator))
         val divisorPolynomial = divisor.polynomial
 
         if (divisorPolynomial.isConstant) {
@@ -121,7 +141,9 @@ object Normalizer {
     }
 
     private fun powerOf(power: Expr.Power): PolyOutcome {
-        val base = of(power.base) as? PolyOutcome.Value ?: return PolyOutcome.Blocked(describeBlocked(power.base))
+        val baseOutcome = of(power.base)
+        val base = baseOutcome as? PolyOutcome.Value
+            ?: return PolyOutcome.Blocked(blockedReason(baseOutcome, power.base))
         val exponentValue = of(power.exponent)
         val exponentPolynomial = (exponentValue as? PolyOutcome.Value)?.polynomial
             ?: return PolyOutcome.Blocked("El exponente no es una expresión numérica manejable.")
@@ -140,8 +162,12 @@ object Normalizer {
     }
 
     private fun equationDifference(equals: Expr.Equals): PolyOutcome {
-        val left = of(equals.left) as? PolyOutcome.Value ?: return PolyOutcome.Blocked(describeBlocked(equals.left))
-        val right = of(equals.right) as? PolyOutcome.Value ?: return PolyOutcome.Blocked(describeBlocked(equals.right))
+        val leftOutcome = of(equals.left)
+        val left = leftOutcome as? PolyOutcome.Value
+            ?: return PolyOutcome.Blocked(blockedReason(leftOutcome, equals.left))
+        val rightOutcome = of(equals.right)
+        val right = rightOutcome as? PolyOutcome.Value
+            ?: return PolyOutcome.Blocked(blockedReason(rightOutcome, equals.right))
         return PolyOutcome.Value(left.polynomial - right.polynomial)
     }
 
@@ -149,6 +175,14 @@ object Normalizer {
         is PolyOutcome.Value -> PolyOutcome.Value(outcome.polynomial * factor)
         is PolyOutcome.Blocked -> outcome
     }
+
+    /**
+     * El motivo real de un bloqueo. Sobrescribirlo con el texto genérico borraba la explicación
+     * dimensional: `3 km + 2 s` aparecía como «no se puede convertir en polinomio exacto», que es
+     * cierto pero no dice al estudiante qué está mal.
+     */
+    private fun blockedReason(outcome: PolyOutcome, expression: Expr): String =
+        (outcome as? PolyOutcome.Blocked)?.reason ?: describeBlocked(expression)
 
     private fun describeBlocked(expression: Expr): String =
         "No se puede convertir '${ExprPrinter.render(expression)}' en polinomio exacto."

@@ -46,8 +46,10 @@ android {
 }
 
 dependencies {
+    // `design-system` se usa directamente en las pruebas de instrumentación; `presentation` aporta el host,
+    // las pantallas y, por `api`, los motores matemático y de aprendizaje.
     implementation(project(":design-system"))
-    implementation(project(":shared:math-engine"))
+    implementation(project(":shared:presentation"))
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.core.ktx)

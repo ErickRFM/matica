@@ -39,4 +39,14 @@ internal object ExerciseAst {
 
     /** `x + b` entre paréntesis, lista para que un factor la multiplique. */
     fun innerSum(constant: Long, variable: String): Expr = linearSum(1L, constant, variable)
+
+    /**
+     * `-k` escrito como resta de una suma de un solo término, porque así el impresor lo cierra
+     * entre paréntesis: `3(-5)`. Con `Neg` directo saldría `3*-5` o `(-3)5`, que el parser lee
+     * bien pero que ningún libro escribe, y el estudiante aprende la forma que ve.
+     */
+    fun negativeParen(value: Long): Expr {
+        require(value > 0) { "Se recibe el valor absoluto; llegó $value." }
+        return Expr.Sum(listOf(term(true, const(value))))
+    }
 }

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- El fondo de ventana es lo que se ve en el hueco entre el icono del splash del sistema y el
+         primer `Composable`. Tiene que ser el mismo `background` medido del tema, o el arranque
+         parpadea de blanco a Mist. -->
+    <style name="Theme.Matica" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/matica_background</item>
+        <item name="android:colorAccent">@color/matica_primary</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

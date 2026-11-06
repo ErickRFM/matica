@@ -73,6 +73,15 @@ jobs:
       - name: Pruebas del sistema visual (target Android, host)
         run: ./gradlew :design-system:testAndroidHostTest --stacktrace
 
+      - name: Compilar la capa de presentación (JVM)
+        run: ./gradlew :shared:presentation:compileKotlinJvm --stacktrace
+
+      - name: Pruebas de rutas, sesión y renderizador (JVM)
+        run: ./gradlew :shared:presentation:jvmTest --stacktrace
+
+      - name: Pruebas de rutas, sesión y renderizador (target Android, host)
+        run: ./gradlew :shared:presentation:testAndroidHostTest --stacktrace
+
       - name: Compilar APK debug
         run: ./gradlew :apps:androidApp:assembleDebug --stacktrace
 
@@ -86,6 +95,7 @@ jobs:
             shared/math-remote/build/reports/tests/
             shared/learning-engine/build/reports/tests/
             shared/exercises/build/reports/tests/
+            shared/presentation/build/reports/tests/
             design-system/build/reports/tests/
           if-no-files-found: ignore
           retention-days: 14

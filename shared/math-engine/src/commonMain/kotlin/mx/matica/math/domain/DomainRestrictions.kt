@@ -36,6 +36,7 @@ object DomainRestrictions {
     private fun collect(expression: Expr, into: MutableSet<Restriction>) {
         when (expression) {
             is Expr.Const, is Expr.Var -> Unit
+            is Expr.Quantity -> collect(expression.operand, into)
             is Expr.Sum -> expression.terms.forEach { collect(it.operand, into) }
             is Expr.Neg -> collect(expression.operand, into)
             is Expr.Product -> expression.factors.forEach { collect(it.operand, into) }
