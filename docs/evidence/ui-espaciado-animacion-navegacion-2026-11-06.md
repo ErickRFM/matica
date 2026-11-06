@@ -253,6 +253,16 @@ prueba nueva de las barras. Lo que sostiene `MaticaSystemBarAppearance` es la cl
 `MaticaWindowInsetsTest`, 4 casos con 0 fallos. CI sobre el commit `a3bf62d`: «Verificación Full
 Kotlin» en verde, 2m 58s (run 42246911006).
 
+**Después de la consolidación (misma tarde, 11:17)**: el trabajo de arranque se commiteó en `524e0d3` y
+`main` entró en la rama sin conflictos (`ce0b5e7`), así que la separación de arriba deja de estar
+vigente — **45 instrumentadas y 777 unitarias pasaron a ser el estado commiteado**. Se volvió a correr la
+batería sobre ese commit de integración: `BUILD SUCCESSFUL in 2m 22s` con los XML de las 11:11 dando
+`tests=45 failures=0 errors=0` y 777 unitarias con 0 fallos. CI verde en `ce0b5e7` (run 42259495829,
+3m34s), ya con el paso de pytest del servicio simbólico que trajo `main`. El PR #6 se fusionó en
+`cc5b940` y CI sobre `main` salió en verde (run 42260212387), con el árbol de `main` verificado idéntico
+al de `ce0b5e7` (`git diff --stat ce0b5e7 origin/main` vacío), que es lo que hace que ese recuento valga
+para la troncal y no sólo para la rama.
+
 ## Pendiente y bloqueado (no fingido como hecho)
 
 - **Un arreglo de la caminata sigue sin aserción**: el peso del párrafo de estrategia (4).
