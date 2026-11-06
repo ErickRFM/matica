@@ -8,13 +8,15 @@ y que los casos difíciles —los que el motor Kotlin offline deja indeterminado
 from __future__ import annotations
 
 import json
+import os
 
 import pytest
 from fastapi.testclient import TestClient
 
+os.environ["MATICA_SYMBOLIC_API_KEY"] = "test-only-do-not-deploy"
 from app import app
 
-client = TestClient(app)
+client = TestClient(app, headers={"X-Matica-Service-Key": "test-only-do-not-deploy"})
 
 
 def const(value: str) -> dict:
@@ -234,3 +236,21 @@ def test_fracciones_exactas_sin_coma_flotante():
     body = call("isEquivalent", sum_node(const("1/3"), const("1/6")), const("1/2"))
     assert body["result"]["equivalent"] is True
     assert "." not in json.dumps(body["result"]["difference"])
+
+
+# Server-to-server authentication and resource limits (deploy hardening).
+def test_requires_a_key():
+    body = {"contractVersion": "1", "capability": "simplify", "expression": {"kind": "const", "value": "1"}}
+    assert TestClient(app).post("/v1/symbolic", json=body).status_code == 401
+    assert TestClient(app).post("/v1/symbolic", json=body, headers={"X-Matica-Service-Key": "wrong"}).status_code == 401
+
+
+def test_missing_server_key_is_fail_closed(monkeypatch):
+    monkeypatch.delenv("MATICA_SYMBOLIC_API_KEY", raising=False)
+    response = client.post("/v1/symbolic", json={"contractVersion": "1", "capability": "simplify", "expression": {"kind": "const", "value": "1"}})
+    assert response.status_code == 503
+
+
+def test_rejects_body_larger_than_64_kib():
+    response = client.post("/v1/symbolic", content=b"x" * 70000, headers={"Content-Type": "application/json"})
+    assert response.status_code == 413

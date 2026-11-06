@@ -10,6 +10,9 @@ Arranque local:  uvicorn app:app --port 8099
 from __future__ import annotations
 
 import asyncio
+import hmac
+import json
+import os
 import time
 
 import sympy
@@ -247,8 +250,22 @@ async def healthz() -> dict:
 
 @app.post("/v1/symbolic")
 async def symbolic(request: Request) -> JSONResponse:
+    # Private server-to-server service. Never embed this key in the Android APK.
+    configured_key = os.environ.get("MATICA_SYMBOLIC_API_KEY", "")
+    if not configured_key:
+        return JSONResponse({"detail": "Service configuration unavailable"}, status_code=503)
+    provided_key = request.headers.get("X-Matica-Service-Key", "")
+    if not hmac.compare_digest(provided_key, configured_key):
+        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+
+    # Bound memory use before JSON parsing, even when Content-Length is omitted.
+    raw = bytearray()
+    async for chunk in request.stream():
+        raw.extend(chunk)
+        if len(raw) > 65536:
+            return JSONResponse({"detail": "Payload too large"}, status_code=413)
     try:
-        payload = validate_request(await request.json())
+        payload = validate_request(json.loads(raw))
     except (ValueError, TypeError, ContractError) as error:
         _counters["invalid"] += 1
         code = error.code if isinstance(error, ContractError) else "invalid_json"
