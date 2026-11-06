@@ -1,5 +1,6 @@
 package mx.matica.design
 
+import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -9,6 +10,7 @@ import mx.matica.design.a11y.maticaContrastPairs
 import mx.matica.design.theme.MaticaDarkColorScheme
 import mx.matica.design.theme.MaticaLightColorScheme
 import mx.matica.design.theme.MaticaSemanticColors
+import mx.matica.design.tokens.MaticaLayout
 import mx.matica.design.tokens.MaticaShapes
 import mx.matica.design.tokens.MaticaSpacing
 import mx.matica.design.tokens.MaticaTypography
@@ -117,8 +119,22 @@ class ThemeTokensTest {
     }
 
     @Test
-    fun losRadiosOrdenanComoLasTarjetasDelDiseno() {
-        MaticaShapes.radii.zip(MaticaShapes.radii.drop(1)).forEach { (tight, loose) ->
+    fun lasMedidasDeLayoutSostienenLaRegraDeCuarentaY_ochoDp() {
+        assertEquals(48f, MaticaLayout.touchTarget.value, "Material fija 48 dp como objetivo táctil mínimo.")
+        assertEquals(0f, MaticaLayout.glyphFrame.value % 4f, "El marco de glifo sale de la retícula de 4 dp.")
+        assertEquals(24f, MaticaLayout.glyphFrame.value)
+        assertTrue(
+            MaticaLayout.maxContentWidth > 411.dp,
+            "El tope de contenido cortaría un teléfono corriente antes de tiempo.",
+        )
+        assertTrue(
+            MaticaLayout.maxContentWidth < 840.dp,
+            "Con ${MaticaLayout.maxContentWidth} el texto seguiría cruzando toda una tableta.",
+        )
+    }
+
+    @Test
+    fun losRadiosOrdenanComoLasTarjetasDelDiseno() {        MaticaShapes.radii.zip(MaticaShapes.radii.drop(1)).forEach { (tight, loose) ->
             assertTrue(tight < loose, "El radio $tight no es menor que $loose.")
         }
         assertEquals(16f, MaticaShapes.medium.value)
