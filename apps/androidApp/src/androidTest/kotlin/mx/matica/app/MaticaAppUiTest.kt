@@ -175,6 +175,49 @@ class MaticaAppUiTest {
     }
 
     @Test
+    fun laOpcionDeGradoNoElegidaTieneSuperficiePropia() {
+        val session = session()
+        rule.setContent { MaticaApp(session = session, navigator = MaticaNavigator(MaticaRoute.Settings)) }
+        rule.waitForIdle()
+
+        // Se mide el relleno, no el rótulo: en el centro del botón siempre hay tinta, así que un
+        // `TEXT` pasaría la prueba por los pelos. A 12 px del borde izquierdo sólo hay superficie, y
+        // ésa es la que con la variante de texto era idéntica al fondo de pantalla.
+        val otra = listOf("1.º de secundaria", "2.º de secundaria", "3.º de secundaria")
+            .first { it != session.settings.grade }
+        val opcion = rule.onNode(hasText(otra) and hasClickAction()).fetchSemanticsNode().boundsInWindow
+        val raiz = rule.onRoot().fetchSemanticsNode().boundsInWindow
+        val centroY = ((opcion.top + opcion.bottom) / 2f - raiz.top).roundToInt()
+        val dentro = pixelDeLaRaiz((opcion.left + 12f - raiz.left).roundToInt(), centroY)
+        val fuera = pixelDeLaRaiz((opcion.left - 8f - raiz.left).roundToInt(), centroY)
+        assertTrue(
+            !mismoColor(dentro, fuera),
+            "«$otra» vale #${Integer.toHexString(dentro)} por dentro y #${Integer.toHexString(fuera)} ocho " +
+                "px a su izquierda: la opción sin elegir no tiene superficie, se lee como una etiqueta más " +
+                "del apartado y no como algo que se puede tocar.",
+        )
+    }
+
+    @Test
+    fun logrosNoRepiteLasInsigniasDeLaCabecera() {
+        val session = session()
+        rule.setContent { MaticaApp(session = session, navigator = MaticaNavigator(MaticaRoute.Rewards)) }
+        rule.waitForIdle()
+
+        // `onAllNodes` con el texto exacto: las marcas del apartado de abajo también llevan «XP»
+        // («Primer bloque de práctica · 60 XP»), así que buscar la subcadena contaría tres y la
+        // duplicación de la cabecera quedaría tapada por el propio listado.
+        listOf("${session.xp} XP", "${session.streak} días").forEach { etiqueta ->
+            val veces = rule.onAllNodes(hasText(etiqueta)).fetchSemanticsNodes().size
+            assertTrue(
+                veces == 1,
+                "«$etiqueta» aparece $veces veces en Logros: la pantalla pinta su propia fila de insignias " +
+                    "encima de la de la cabecera y el estudiante ve el mismo contador dos veces a 40 px.",
+            )
+        }
+    }
+
+    @Test
     fun elReproductorMuestraElVeredictoQueDioElMotor() {
         val session = session()
         val navigator = MaticaNavigator(MaticaRoute.LessonPlayer(SkillId.BALANCE_PRINCIPLE, 1))
