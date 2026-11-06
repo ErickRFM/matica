@@ -110,3 +110,24 @@ contrato Kotlin no representa irracionales y aproximarlos sería inventar precis
 - Raíces irracionales: el servicio las calcula, el contrato no las representa.
 - El cálculo huérfano tras un 504 sigue corriendo en su hilo; aislarlo de verdad exige un worker
   supervisado, no este endpoint.
+
+
+## Despliegue independiente en Render (B4 provisional)
+
+El servicio SymPy es un **auxiliar interno** y no sustituye Ktor ni PostgreSQL.
+Se arranca desde la raíz del repositorio con:
+
+```sh
+pip install -r tools/symbolic-service/requirements.txt
+cd tools/symbolic-service
+uvicorn app:app --host 0.0.0.0 --port "${PORT:-10000}"
+```
+
+Configuración requerida en Render (secreto, NUNCA en git ni en la APK):
+`MATICA_SYMBOLIC_API_KEY` de alta entropía. Sin el secreto el endpoint retorna 503.
+La petición `POST /v1/symbolic` exige `X-Matica-Service-Key`; la ausencia o error da 401.
+`GET /healthz` no requiere secreto y solo comprueba la salud/versión.
+Cuerpos mayores de 64 KiB son rechazados (413). El servicio sigue siendo una POC:
+los timeouts de SymPy usan un hilo que no se mata físicamente; mantener detrás de Ktor,
+no permitir acceso directo desde Android, aplicar límites de red y no tratarlo
+como motor público de cálculo sin protección adicional.
