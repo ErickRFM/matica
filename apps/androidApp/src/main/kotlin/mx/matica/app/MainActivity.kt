@@ -8,6 +8,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import mx.matica.presentation.app.MaticaLaunch
@@ -25,7 +26,8 @@ class MainActivity : ComponentActivity() {
         // viva y volver a mostrar un segundo de marca sería un peaje, no una bienvenida.
         val coldStart = savedInstanceState == null
         setContent {
-            val session = remember { MaticaSession() }
+            val session = remember { MaticaSession(connectionProbe = { MaticaBackendProbe.isAvailable(BuildConfig.MATICA_API_BASE_URL) }) }
+            LaunchedEffect(session) { session.refreshConnection() }
             val navigator = rememberMaticaNavigator()
             // El botón físico deshace la pila propia; sólo al llegar a la raíz deja salir de la app.
             BackHandler(enabled = navigator.canGoBack) { navigator.goBack() }

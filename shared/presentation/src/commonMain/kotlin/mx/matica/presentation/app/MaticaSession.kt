@@ -35,12 +35,11 @@ import mx.matica.presentation.math.routeNodes
 /** Modo de color elegido por el estudiante; `SYSTEM` respeta el tema del dispositivo. */
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
-/** Ajustes persistentes del estudiante. La accesibilidad no es un adorno: controla el render. */
+/** Ajustes de sesión. La accesibilidad no es un adorno: controla el render. */
 data class MaticaSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val motionScale: Float? = null,
     val reduceTransitions: Boolean = false,
-    val grade: String = "2.º de secundaria",
     val showHintsByDefault: Boolean = false,
 )
 
@@ -63,6 +62,7 @@ class MaticaSession(
     private val generator: ExerciseGenerator = ExerciseGenerator(),
     val graph: SkillGraph = DefaultCurriculum.graph,
     var today: LocalDate = LocalDate(2026, 11, 5),
+    private val connectionProbe: suspend () -> Boolean = { false },
 ) {
     var profile: LearnerProfile by mutableStateOf(LearnerProfile.EMPTY)
         private set
@@ -102,6 +102,13 @@ class MaticaSession(
 
     fun setConnection(connected: Boolean) {
         offline = !connected
+    }
+
+    /** Sólo se muestra en línea cuando un servidor real responde. No hay modo simulado en Ajustes. */
+    suspend fun refreshConnection() {
+        val connected = try { connectionProbe() } catch (_: Exception) { false }
+        offline = !connected
+        message = if (connected) "Servidor de Mática disponible." else "Sin servidor disponible; puedes practicar sin conexión."
     }
 
     // --- Diagnóstico ---------------------------------------------------------------
