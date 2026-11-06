@@ -6,8 +6,10 @@ densidad 440 → 392,72 dp de ancho en retrato). Tema claro.
 
 Cierra los cuatro huecos que quedaron abiertos al terminar la tanda de marca: geometría sin
 componente ni plantilla, arrastrar un punto de la gráfica, el recorrido con teclado y la medida del
-párrafo de estrategia. El quinto (Docker → Postgres → Ktor) sale de la lista por un motivo distinto
-al que se suponía; está documentado abajo.
+párrafo de estrategia. El quinto (Docker → Postgres → Ktor) se midió también, pero el diagnóstico con
+el que entró en la lista estaba equivocado y hay que corregirlo dos veces: primero resultó que
+Postgres sí estaba arriba, y después, al integrar `main`, que el módulo de backend ya existía. Está
+documentado abajo.
 
 ## Qué se construyó
 
@@ -113,6 +115,77 @@ tanda que se detuvo a mitad. Los dos APK se reinstalaron a mano (`adb install -r
 la segunda pasada es la de la tabla. Si se hubiera leído el código de salida, esta tanda se habría reportado
 como verde sin haber ejecutado ni un solo test.
 
+## Backend: el diagnóstico que escribí esta misma tarde ya estaba obsoleto
+
+Escribí «`:backend:api` no existe» contra `main` en `634d99c`, y era cierto en ese commit. Al integrar
+`origin/main` para esta PR apareció el PR #9 (temas sin grados escolares + conectividad Ktor), que crea
+`backend/api` con `Application.kt`, `PostgresProbe.kt` y `ApiTest.kt` y lo añade a `settings.gradle.kts`.
+La corrección va en el documento porque la afirmación anterior, dejada como estaba, sería falsa.
+
+Ejecutado contra el árbol integrado:
+
+```
+./gradlew :backend:api:test          # ApiTest: 5 pruebas, 0 fallos, 0 errores
+./gradlew :backend:api:run           # PORT=10000
+curl -i http://127.0.0.1:10000/healthz     # 200 {"status":"ok","service":"matica-api"}
+curl -i http://127.0.0.1:10000/v1/topics   # 200 {"version":1,"topics":[{"id":"integer-operations","title":"Operaciones con enteros"}, …
+curl -i http://127.0.0.1:10000/readyz      # 503 {"status":"database_unavailable",…}
+```
+
+Es la primera vez que estas pruebas se ejecutan en esta máquina y que el servidor responde de verdad:
+`/healthz` y `/v1/topics` en 200, y `/readyz` en 503 exactamente porque no hay `DATABASE_URL`. El 503 no
+es un fallo del servidor, es el contrato que documenta `docs/BACKEND_CONNECT.md`. El proceso se detuvo
+después de medir (`taskkill` al PID que escuchaba en 10000; el `run` de Gradle deja el JVM hijo vivo al
+cancelar la tarea, había que matarlo a mano).
+
+**Defecto encontrado y arreglado: el módulo no compilaba fuera del CI.** `backend/api/build.gradle.kts`
+fijaba `jvmTarget = JVM_17` para Kotlin pero no anclaba Java, así que `compileJava` usaba el JDK del
+daemon y la validación de consistencia abortaba antes de compilar:
+
+```
+> Task :backend:api:compileKotlin FAILED
+  Inconsistent JVM-target compatibility detected for tasks 'compileJava' (21) and 'compileKotlin' (17)
+```
+
+CI no lo ve porque `actions/setup-java` fija `java-version: '17'` y ahí ambos coinciden; cualquier
+desarrollador con un JDK más nuevo no podía ni ejecutar `:backend:api:test`. El arreglo es el mismo
+anclaje que ya usan los demás módulos (`androidApp` fija `sourceCompatibility`/`targetCompatibility` a
+17): `java { sourceCompatibility = VERSION_17; targetCompatibility = VERSION_17 }`, que funciona con
+JDK 17 y con 21 sin exigir un JDK 17 aparte (la alternativa, toolchain, obligaría a instalarlo). Después
+del cambio: `BUILD SUCCESSFUL` y 5/5 en verde. Verificación de que el arreglo es el que tiene que ser:
+con el bloque quitado el fallo es exactamente el de arriba, y con él puesto la prueba se ejecuta.
+
+## La tanda sobre el árbol integrado volvió a medirse, y encontró óxido de `main`
+
+Los 54 de arriba se midieron sobre `634d99c`. Al integrar `origin/main` (PR #9) la tanda se repitió
+entera —el merge toca producción de pantallas, `MainActivity`, `MaticaSession` y el `build` de la app—
+y cerró `BUILD FAILED` con `tests="54" failures="2"` en el XML, los dos en `MaticaWindowInsetsTest`:
+
+```
+Assert failed: The component with Text + InputText + EditableText contains 'Correo de la escuela' … is not displayed
+  at mx.matica.app.MaticaWindowInsetsTest.irAlReproductor(MaticaWindowInsetsTest.kt:216)
+```
+
+El helper recorre la ruta real hasta el reproductor y valida cada paso con su marca, y el PR #9 renombró
+esa etiqueta en producción («Cuenta de la escuela» → «Cuenta de Mática», «Correo de la escuela» →
+«Correo electrónico», por la política de no nombrar etapas escolares) actualizando `MaticaAppUiTest` pero
+dejando atrás `MaticaWindowInsetsTest`. La marca seguía comprobando lo mismo —que el campo del login está
+pintado de camino al reproductor—, así que lo obsoleto era el texto, no la aserción: se cambió a
+«Correo electrónico» y la clase pasó 4/4 (`BUILD SUCCESSFUL in 42s` con `-Pandroid.testInstrumentation
+RunnerArguments.class=mx.matica.app.MaticaWindowInsetsTest`). Busqué después si otro test del módulo
+pedía alguna de las frases que el PR #9 borró (`escuela`, `no pide tu edad`, `perfil vive`,
+`datos de adultos`, `repasos y logros`): ninguna otra aparición.
+
+Por qué el CI del PR #9 no lo vio: `ci.yml` **compila** las pruebas instrumentadas
+(`:apps:androidApp:compileDebugAndroidTestKotlin`, añadido en ese propio PR) pero no las ejecuta, porque
+no hay emulador en el runner. Un aserto obsoleto en `androidTest` sólo se ve en máquina.
+
+Terminada la corrección, la tanda completa sobre el árbol integrado cerró `BUILD SUCCESSFUL in 3m 11s`
+con **`tests="54" failures="0" errors="0"`** en el XML y el mismo reparto por clase de la tabla de arriba.
+La batería unitaria sobre ese árbol: **815** en los dos targets KMP (`jvmTest` 408 + `testAndroidHostTest`
+407, 0 fallos) más las **5** de `:backend:api`, y `assembleDebug` en verde. La diferencia con los 813
+medidos antes del merge es `TopicNamingPolicyTest` (1 por target), que llega con el PR #9.
+
 ## Lo que esta tanda NO certifica
 
 - **TalkBack real.** El AVD no tiene ningún lector de pantalla instalado:
@@ -124,14 +197,13 @@ como verde sin haber ejecutado ni un solo test.
 - **Teclado físico.** Se inyectan las teclas del sistema (`KEYCODE_TAB`, `KEYCODE_DPAD_*`, `KEYCODE_ENTER`)
   desde `Instrumentation`, no desde un teclado USB; la navegación entre destinos está probada, no la
   latencia ni el comportamiento con un hardware concreto.
-- **Backend Ktor y persistencia.** Aquí el diagnóstico anterior estaba equivocado en lo importante:
-  PostgreSQL **sí está arriba** —el servicio Windows `postgresql-x64-17` está `Running` y escucha en
-  `0.0.0.0:5432`—, así que Docker nunca fue el bloque de la base de datos. Lo que falta es el módulo:
-  `settings.gradle.kts` no incluye `:backend:api`, el directorio `backend/api` está vacío y no hay una
-  sola fuente con `io.ktor.server` en el repo. Mientras no exista el servidor, no hay integración que
-  ejecutar contra esa base de datos.
+- **Persistencia real contra PostgreSQL (`/readyz=200`).** El servidor ya existe y ya corre (arriba),
+  pero `/readyz` responde 503 porque no hay `DATABASE_URL` con credenciales de una base dedicada a
+  Mática: `psql -U postgres -h 127.0.0.1 -p 5432` se queda pidiendo contraseña, en el repo no hay
+  ninguna credencial y la instancia local también sirve a SIII y Compañero, así que no se adivina la
+  clave ni se crea una base a ciegas en terreno ajeno. Falta esa decisión de Erick, no el código.
 - **Docker Desktop.** El CLI responde (`29.9.2`) pero el engine no: `docker info` falla contra el pipe
-  `dockerDesktopLinuxEngine` y la distribución WSL `docker-desktop` está `Stopped`. Relevante para
-  contenedores, no para Postgres, que ya corre como servicio nativo.
+  `dockerDesktopLinuxEngine` y la distribución WSL `docker-desktop` está `Stopped`. No bloqueó nada de
+  lo de arriba: el servidor corrió con `:backend:api:run` directamente, sin contenedor.
 - **CI de este push.** Se consulta al abrir la PR; nada de este documento declara un verde que no se
   haya visto.
