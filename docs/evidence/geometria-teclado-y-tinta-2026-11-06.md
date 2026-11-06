@@ -205,5 +205,10 @@ medidos antes del merge es `TopicNamingPolicyTest` (1 por target), que llega con
 - **Docker Desktop.** El CLI responde (`29.9.2`) pero el engine no: `docker info` falla contra el pipe
   `dockerDesktopLinuxEngine` y la distribución WSL `docker-desktop` está `Stopped`. No bloqueó nada de
   lo de arriba: el servidor corrió con `:backend:api:run` directamente, sin contenedor.
-- **CI de este push.** Se consulta al abrir la PR; nada de este documento declara un verde que no se
-  haya visto.
+- **CI de este push.** visto y en verde: el run `42287216827` del PR #10 sobre `0f7c917` cerró
+  `completed | success` (`Verificación Full Kotlin`, 2m 17s), con los pasos de Backend Ktor,
+  «Compilar pruebas instrumentadas» y «Compilar APK debug» en `success`. Eso no equivale a ejecutar las
+  instrumentadas: el runner no tiene emulador, así que CI **compila** `androidTest` pero no lo corre —y
+  de ahí los dos fallos obsoletos que sólo aparecieron en máquina. El merge queda pendiente de Erick.
+- **Lo que el emulador no cubre.** La rotación en el POCO X7 Pro físico y cualquier comportamiento con
+  teclado USB real siguen sin medirse en hardware.
