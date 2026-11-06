@@ -76,7 +76,11 @@ object MaticaChipPalette {
  * (20 dp) que una tarjeta de la siguiente (12 dp): el agrupamiento salía invertido.
  */
 @Composable
-fun MaticaSectionHeader(title: String, modifier: Modifier = Modifier, action: (@Composable () -> Unit)? = null) {
+private fun MaticaSectionHeader(
+    title: String,
+    modifier: Modifier = Modifier,
+    action: (@Composable () -> Unit)? = null,
+) {
     Row(
         modifier = modifier.fillMaxWidth().padding(horizontal = MaticaSpacing.lg),
         verticalAlignment = Alignment.CenterVertically,

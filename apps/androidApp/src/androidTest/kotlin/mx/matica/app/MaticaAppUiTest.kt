@@ -1,5 +1,8 @@
 package mx.matica.app
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.test.assertIsDisplayed
@@ -140,6 +143,29 @@ class MaticaAppUiTest {
             cornerPixel(),
             "Con tema oscuro el fondo pintado no es MaticaPalette.Night",
         )
+    }
+
+    /**
+     * El formulario de un servicio bloqueado tiene que verse aunque el estado diga que no hay datos:
+     * anidado dentro del `content` de `MaticaStateView` sólo se compone en Success, y las dos pantallas
+     * bloqueadas quedaban con el campo invisible (así lo cazó la instrumentación al navegar hasta
+     * «Correo de la escuela»).
+     */
+    @Test
+    fun losServiciosBloqueadosMuestranSuFormularioDesactivado() {
+        var route by mutableStateOf<MaticaRoute>(MaticaRoute.Login)
+        rule.setContent { MaticaApp(session = session(), navigator = MaticaNavigator(route)) }
+        rule.waitForIdle()
+
+        listOf(
+            Triple(MaticaRoute.Login, "Correo de la escuela", "Desactivado hasta que exista el servicio."),
+            Triple(MaticaRoute.Classroom, "Código de invitación", "Desactivado: no hay servidor que lo valide."),
+        ).forEach { (destino, etiqueta, aviso) ->
+            rule.runOnIdle { route = destino }
+            rule.waitForIdle()
+            rule.onNodeWithText(etiqueta).assertIsDisplayed()
+            rule.onNodeWithText(aviso).assertIsDisplayed()
+        }
     }
 
     private fun cornerPixel(): Int =

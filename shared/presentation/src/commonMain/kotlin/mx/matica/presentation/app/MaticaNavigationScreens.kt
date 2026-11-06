@@ -22,7 +22,7 @@ import mx.matica.presentation.components.MaticaChipPalette
 import mx.matica.presentation.components.MaticaCountChip
 import mx.matica.presentation.components.MaticaGlyph
 import mx.matica.presentation.components.MaticaIcon
-import mx.matica.presentation.components.MaticaSectionHeader
+import mx.matica.presentation.components.MaticaSection
 import mx.matica.presentation.math.RouteMapView
 import mx.matica.presentation.route.MaticaNavigator
 import mx.matica.presentation.route.MaticaRoute
@@ -181,6 +181,10 @@ fun DiagnosisResultScreen(session: MaticaSession, navigator: MaticaNavigator) {
 fun LoginScreen(session: MaticaSession, navigator: MaticaNavigator) {
     var email = remember { "" }
     MaticaScreen(title = "Entrar", session = session, onBack = { navigator.goBack() }, subtitle = "Cuentas y sincronización") {
+        // El estado va suelto y la tarjeta al lado: el `content` de `MaticaStateView` sólo se invoca
+        // en Success, así que mientras estaba anidado dentro de Offline el campo desactivado y su
+        // leyenda no se componían nunca (lo cazó la instrumentación: «Correo de la escuela» no
+        // aparecía en pantalla).
         MaticaStateView(
             state = MaticaViewState.Offline(
                 title = "El servicio de cuentas todavía no existe",
@@ -188,21 +192,20 @@ fun LoginScreen(session: MaticaSession, navigator: MaticaNavigator) {
                     "recuperar contraseña ni sincronizar progreso.",
             ),
             onRetry = null,
-        ) {
-            MaticaCard {
-                MaticaField(
-                    value = email,
-                    onValueChange = { email = it },
-                    label = "Correo de la escuela",
-                    placeholder = "nombre@escuela.mx",
-                    enabled = false,
-                    error = "Desactivado hasta que exista el servicio.",
-                )
-                MaticaCaption(
-                    "No se guarda ningún correo en la app y no se pide edad: el perfil local no necesita " +
-                        "identificar a menores para funcionar.",
-                )
-            }
+        ) { }
+        MaticaCard {
+            MaticaField(
+                value = email,
+                onValueChange = { email = it },
+                label = "Correo de la escuela",
+                placeholder = "nombre@escuela.mx",
+                enabled = false,
+                error = "Desactivado hasta que exista el servicio.",
+            )
+            MaticaCaption(
+                "No se guarda ningún correo en la app y no se pide edad: el perfil local no necesita " +
+                    "identificar a menores para funcionar.",
+            )
         }
         MaticaButton(
             label = "Seguir con perfil local",
@@ -230,51 +233,53 @@ fun HomeScreen(session: MaticaSession, navigator: MaticaNavigator) {
             leadingGlyph = MaticaIcon.ROUTE,
             fullWidth = true,
         )
-        MaticaSectionHeader("Para hoy")
-        MaticaStateView(
-            state = when {
-                plan.reviewsDue.isEmpty() && plan.nextSkills.isEmpty() ->
-                    MaticaViewState.Empty("Nada nuevo que abrir", "Dominaste todo lo disponible o falta diagnóstico.")
+        MaticaSection("Para hoy") {
+            MaticaStateView(
+                state = when {
+                    plan.reviewsDue.isEmpty() && plan.nextSkills.isEmpty() ->
+                        MaticaViewState.Empty("Nada nuevo que abrir", "Dominaste todo lo disponible o falta diagnóstico.")
 
-                else -> MaticaViewState.success(plan)
-            },
-        ) { study ->
-            study.reviewsDue.forEach { due ->
-                MaticaCard {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.md)) {
-                        MaticaGlyph(icon = MaticaIcon.REFRESH, tint = MaterialTheme.colorScheme.error)
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(due.skill.labelEs, style = MaterialTheme.typography.titleMedium)
-                            MaticaCaption("Repaso vencido hace ${due.daysOverdue} día(s). ${due.level.labelEs}.")
+                    else -> MaticaViewState.success(plan)
+                },
+            ) { study ->
+                study.reviewsDue.forEach { due ->
+                    MaticaCard {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.md)) {
+                            MaticaGlyph(icon = MaticaIcon.REFRESH, tint = MaterialTheme.colorScheme.error)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(due.skill.labelEs, style = MaterialTheme.typography.titleMedium)
+                                MaticaCaption("Repaso vencido hace ${due.daysOverdue} día(s). ${due.level.labelEs}.")
+                            }
+                            MaticaButton(label = "Repasar", onClick = { navigator.go(MaticaRoute.SkillDetail(due.skill)) })
                         }
-                        MaticaButton(label = "Repasar", onClick = { navigator.go(MaticaRoute.SkillDetail(due.skill)) })
                     }
                 }
-            }
-            study.nextSkills.forEach { recommendation ->
-                MaticaCard {
-                    Column {
-                        Text(recommendation.skill.labelEs, style = MaterialTheme.typography.titleMedium)
-                        MaticaCaption(recommendation.reason)
-                        if (recommendation.prerequisitesLeft.isNotEmpty()) {
-                            MaticaCaption(
-                                "Faltan: " + recommendation.prerequisitesLeft.joinToString { it.labelEs },
+                study.nextSkills.forEach { recommendation ->
+                    MaticaCard {
+                        Column {
+                            Text(recommendation.skill.labelEs, style = MaterialTheme.typography.titleMedium)
+                            MaticaCaption(recommendation.reason)
+                            if (recommendation.prerequisitesLeft.isNotEmpty()) {
+                                MaticaCaption(
+                                    "Faltan: " + recommendation.prerequisitesLeft.joinToString { it.labelEs },
+                                )
+                            }
+                            MaticaButton(
+                                label = "Abrir habilidad",
+                                onClick = { navigator.go(MaticaRoute.SkillDetail(recommendation.skill)) },
+                                variant = MaticaButtonVariant.NEUTRAL,
                             )
                         }
-                        MaticaButton(
-                            label = "Abrir habilidad",
-                            onClick = { navigator.go(MaticaRoute.SkillDetail(recommendation.skill)) },
-                            variant = MaticaButtonVariant.NEUTRAL,
-                        )
                     }
                 }
             }
         }
-        MaticaSectionHeader("Accesos")
-        Row(horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.sm)) {
-            MaticaButton("Repasos", { navigator.go(MaticaRoute.ReviewQueue) }, Modifier.weight(1f), MaticaButtonVariant.NEUTRAL)
-            MaticaButton("Logros", { navigator.go(MaticaRoute.Rewards) }, Modifier.weight(1f), MaticaButtonVariant.NEUTRAL)
-            MaticaButton("Ajustes", { navigator.go(MaticaRoute.Settings) }, Modifier.weight(1f), MaticaButtonVariant.NEUTRAL)
+        MaticaSection("Accesos") {
+            Row(horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.sm)) {
+                MaticaButton("Repasos", { navigator.go(MaticaRoute.ReviewQueue) }, Modifier.weight(1f), MaticaButtonVariant.NEUTRAL)
+                MaticaButton("Logros", { navigator.go(MaticaRoute.Rewards) }, Modifier.weight(1f), MaticaButtonVariant.NEUTRAL)
+                MaticaButton("Ajustes", { navigator.go(MaticaRoute.Settings) }, Modifier.weight(1f), MaticaButtonVariant.NEUTRAL)
+            }
         }
     }
 }
@@ -409,28 +414,29 @@ fun RewardsScreen(session: MaticaSession, navigator: MaticaNavigator) {
             MaticaCountChip(session.streak, "días", MaticaIcon.FLAME, MaticaChipPalette.streak, Modifier.weight(1f))
             MaticaCountChip(session.gems, "gemas", MaticaIcon.GEM, MaticaChipPalette.xp, Modifier.weight(1f))
         }
-        MaticaSectionHeader("Marcas")
-        listOf(
-            60 to "Primer bloque de práctica",
-            180 to "Tres habilidades en desarrollo",
-            360 to "Constancia: un día más sin repaso vencido",
-        ).forEach { (target, label) ->
-            MaticaProgress(done = session.xp.coerceAtMost(target), total = target, label = "$label · $target XP")
-        }
-        MaticaCard {
-            Text("Cómo se cuenta", style = MaterialTheme.typography.titleMedium)
-            MaticaCaption(
-                "Cada acierto sin pista suma 12 XP, con pista 6 y el error no resta: la evidencia manda " +
-                    "al nivel, no la racha. No hay compras, no hay anuncios y no hay ranking con otras " +
-                    "personas: la comparación sólo existe contigo de ayer.",
+        MaticaSection("Marcas") {
+            listOf(
+                60 to "Primer bloque de práctica",
+                180 to "Tres habilidades en desarrollo",
+                360 to "Constancia: un día más sin repaso vencido",
+            ).forEach { (target, label) ->
+                MaticaProgress(done = session.xp.coerceAtMost(target), total = target, label = "$label · $target XP")
+            }
+            MaticaCard {
+                Text("Cómo se cuenta", style = MaterialTheme.typography.titleMedium)
+                MaticaCaption(
+                    "Cada acierto sin pista suma 12 XP, con pista 6 y el error no resta: la evidencia manda " +
+                        "al nivel, no la racha. No hay compras, no hay anuncios y no hay ranking con otras " +
+                        "personas: la comparación sólo existe contigo de ayer.",
+                )
+            }
+            MaticaButton(
+                label = "Volver a hoy",
+                onClick = { navigator.popTo(MaticaRoute.Home) },
+                variant = MaticaButtonVariant.TEXT,
+                fullWidth = true,
             )
         }
-        MaticaButton(
-            label = "Volver a hoy",
-            onClick = { navigator.popTo(MaticaRoute.Home) },
-            variant = MaticaButtonVariant.TEXT,
-            fullWidth = true,
-        )
     }
 }
 
@@ -497,63 +503,68 @@ private fun LevelRow(skill: SkillId, level: MasteryLevel, detail: String) {
 fun SettingsScreen(session: MaticaSession, navigator: MaticaNavigator) {
     val settings = session.settings
     MaticaScreen(title = "Ajustes", session = session, onBack = { navigator.goBack() }, subtitle = "Accesibilidad primero") {
-        MaticaSectionHeader("Tema")
-        Row(horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.sm)) {
-            ThemeMode.entries.forEach { mode ->
-                MaticaButton(
-                    label = mode.labelEs(),
-                    onClick = { session.updateSettings { it.copy(themeMode = mode) } },
-                    modifier = Modifier.weight(1f),
-                    variant = if (settings.themeMode == mode) MaticaButtonVariant.PRIMARY else MaticaButtonVariant.NEUTRAL,
-                )
+        MaticaSection("Tema") {
+            Row(horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.sm)) {
+                ThemeMode.entries.forEach { mode ->
+                    MaticaButton(
+                        label = mode.labelEs(),
+                        onClick = { session.updateSettings { it.copy(themeMode = mode) } },
+                        modifier = Modifier.weight(1f),
+                        variant = if (settings.themeMode == mode) MaticaButtonVariant.PRIMARY else MaticaButtonVariant.NEUTRAL,
+                    )
+                }
             }
         }
-        MaticaSectionHeader("Movimiento")
-        MaticaButton(
-            label = if (settings.reduceTransitions) "Transiciones reducidas: activas" else "Transiciones reducidas: apagadas",
-            onClick = { session.updateSettings { it.copy(reduceTransitions = !it.reduceTransitions) } },
-            variant = MaticaButtonVariant.NEUTRAL,
-            fullWidth = true,
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.sm)) {
-            listOf(0f, 0.5f, 1f, 1.5f).forEach { scale ->
-                MaticaButton(
-                    label = scale.label(),
-                    onClick = { session.updateSettings { it.copy(motionScale = scale) } },
-                    modifier = Modifier.weight(1f),
-                    variant = if (settings.motionScale == scale) MaticaButtonVariant.PRIMARY else MaticaButtonVariant.NEUTRAL,
-                )
-            }
-        }
-        MaticaCaption("«Ninguna» equivale a reducir el movimiento del sistema: las animaciones se apagan, el contenido no.")
-        MaticaSectionHeader("Práctica")
-        MaticaButton(
-            label = if (settings.showHintsByDefault) "Pistas abiertas por defecto" else "Pistas ocultas por defecto",
-            onClick = { session.updateSettings { it.copy(showHintsByDefault = !it.showHintsByDefault) } },
-            variant = MaticaButtonVariant.NEUTRAL,
-            fullWidth = true,
-        )
-        MaticaSectionHeader("Grado")
-        listOf("1.º de secundaria", "2.º de secundaria", "3.º de secundaria").forEach { grade ->
+        MaticaSection("Movimiento") {
             MaticaButton(
-                label = grade,
-                onClick = { session.updateSettings { it.copy(grade = grade) } },
-                variant = if (settings.grade == grade) MaticaButtonVariant.PRIMARY else MaticaButtonVariant.TEXT,
+                label = if (settings.reduceTransitions) "Transiciones reducidas: activas" else "Transiciones reducidas: apagadas",
+                onClick = { session.updateSettings { it.copy(reduceTransitions = !it.reduceTransitions) } },
+                variant = MaticaButtonVariant.NEUTRAL,
+                fullWidth = true,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.sm)) {
+                listOf(0f, 0.5f, 1f, 1.5f).forEach { scale ->
+                    MaticaButton(
+                        label = scale.label(),
+                        onClick = { session.updateSettings { it.copy(motionScale = scale) } },
+                        modifier = Modifier.weight(1f),
+                        variant = if (settings.motionScale == scale) MaticaButtonVariant.PRIMARY else MaticaButtonVariant.NEUTRAL,
+                    )
+                }
+            }
+            MaticaCaption("«Ninguna» equivale a reducir el movimiento del sistema: las animaciones se apagan, el contenido no.")
+        }
+        MaticaSection("Práctica") {
+            MaticaButton(
+                label = if (settings.showHintsByDefault) "Pistas abiertas por defecto" else "Pistas ocultas por defecto",
+                onClick = { session.updateSettings { it.copy(showHintsByDefault = !it.showHintsByDefault) } },
+                variant = MaticaButtonVariant.NEUTRAL,
                 fullWidth = true,
             )
         }
-        MaticaSectionHeader("Conexión")
-        MaticaButton(
-            label = if (session.offline) "Simular conexión" else "Simular sin conexión",
-            onClick = { session.setConnection(session.offline) },
-            variant = MaticaButtonVariant.OUTLINE,
-            fullWidth = true,
-        )
-        MaticaCaption(
-            "La conexión sólo afecta a lo que depende del backend (cuentas y aulas). El motor y el " +
-                "registro de evidencia siguen funcionando sin ella.",
-        )
-        session.message?.let { MaticaCaption(it) }
+        MaticaSection("Grado") {
+            listOf("1.º de secundaria", "2.º de secundaria", "3.º de secundaria").forEach { grade ->
+                MaticaButton(
+                    label = grade,
+                    onClick = { session.updateSettings { it.copy(grade = grade) } },
+                    variant = if (settings.grade == grade) MaticaButtonVariant.PRIMARY else MaticaButtonVariant.TEXT,
+                    fullWidth = true,
+                )
+            }
+        }
+        MaticaSection("Conexión") {
+            MaticaButton(
+                label = if (session.offline) "Simular conexión" else "Simular sin conexión",
+                onClick = { session.setConnection(session.offline) },
+                variant = MaticaButtonVariant.OUTLINE,
+                fullWidth = true,
+            )
+            MaticaCaption(
+                "La conexión sólo afecta a lo que depende del backend (cuentas y aulas). El motor y el " +
+                    "registro de evidencia siguen funcionando sin ella.",
+            )
+            session.message?.let { MaticaCaption(it) }
+        }
     }
 }
 
@@ -568,21 +579,20 @@ fun ClassroomScreen(session: MaticaSession, navigator: MaticaNavigator) {
                     "ningún código de invitación puede validarse. La app no finge unirse a nada.",
             ),
             onRetry = null,
-        ) {
-            MaticaCard {
-                MaticaField(
-                    value = code,
-                    onValueChange = { code = it },
-                    label = "Código de invitación",
-                    placeholder = "6 caracteres",
-                    enabled = false,
-                    error = "Desactivado: no hay servidor que lo valide.",
-                )
-                MaticaCaption(
-                    "Cuando exista el servicio, el aula traerá: lista del grupo, asignaciones y vista " +
-                        "docente sin datos personales del estudiante más allá del alias del grupo.",
-                )
-            }
+        ) { }
+        MaticaCard {
+            MaticaField(
+                value = code,
+                onValueChange = { code = it },
+                label = "Código de invitación",
+                placeholder = "6 caracteres",
+                enabled = false,
+                error = "Desactivado: no hay servidor que lo valide.",
+            )
+            MaticaCaption(
+                "Cuando exista el servicio, el aula traerá: lista del grupo, asignaciones y vista " +
+                    "docente sin datos personales del estudiante más allá del alias del grupo.",
+            )
         }
         MaticaButton(
             label = "Practicar sin grupo",

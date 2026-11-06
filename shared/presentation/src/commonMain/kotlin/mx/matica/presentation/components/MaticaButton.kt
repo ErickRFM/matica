@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -98,6 +99,10 @@ fun MaticaButton(
 
     Row(
         modifier = widthModifier
+            // Con el relleno propio del rótulo el botón medía ~44 dp de alto: por debajo del objetivo
+            // táctil de Material. El `heightIn` lo sube a 48 sin cambiar el grosor visual del botón,
+            // porque el texto sigue centrado.
+            .heightIn(min = MaticaLayout.touchTarget)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale

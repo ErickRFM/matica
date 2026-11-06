@@ -28,7 +28,7 @@ import mx.matica.presentation.components.MaticaButtonVariant
 import mx.matica.presentation.components.MaticaGlyph
 import mx.matica.presentation.components.MaticaIcon
 import mx.matica.presentation.components.MaticaIconButton
-import mx.matica.presentation.components.MaticaSectionHeader
+import mx.matica.presentation.components.MaticaSection
 import mx.matica.presentation.exercise.ExerciseRenderPlan
 import mx.matica.presentation.exercise.ExerciseSlot
 import mx.matica.presentation.math.CartesianGraphView
@@ -160,32 +160,33 @@ fun LessonPlayerScreen(skill: SkillId, lessonNumber: Int, session: MaticaSession
         }
 
         if (session.attempts.isNotEmpty()) {
-            MaticaSectionHeader("Intentos de esta sesión")
-            session.attempts.forEachIndexed { index, attempt ->
-                MaticaCard {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.md)) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Intento ${index + 1}", style = MaterialTheme.typography.titleSmall)
-                            MaticaCaption("${attempt.before}  →  ${attempt.after}")
+            MaticaSection("Intentos de esta sesión") {
+                session.attempts.forEachIndexed { index, attempt ->
+                    MaticaCard {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.md)) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Intento ${index + 1}", style = MaterialTheme.typography.titleSmall)
+                                MaticaCaption("${attempt.before}  →  ${attempt.after}")
+                            }
+                            MaticaIconButton(
+                                icon = MaticaIcon.CHECK,
+                                contentDescription = "Revisar intento ${index + 1}",
+                                onClick = { navigator.go(MaticaRoute.AttemptReview(skill, lessonNumber, index + 1)) },
+                            )
                         }
-                        MaticaIconButton(
-                            icon = MaticaIcon.CHECK,
-                            contentDescription = "Revisar intento ${index + 1}",
-                            onClick = { navigator.go(MaticaRoute.AttemptReview(skill, lessonNumber, index + 1)) },
-                        )
                     }
                 }
+                MaticaButton(
+                    label = "Empezar de nuevo",
+                    onClick = {
+                        workspace = plan.equationText
+                        draft = ""
+                        feedback = null
+                    },
+                    variant = MaticaButtonVariant.TEXT,
+                    fullWidth = true,
+                )
             }
-            MaticaButton(
-                label = "Empezar de nuevo",
-                onClick = {
-                    workspace = plan.equationText
-                    draft = ""
-                    feedback = null
-                },
-                variant = MaticaButtonVariant.TEXT,
-                fullWidth = true,
-            )
         }
     }
 }
@@ -437,35 +438,37 @@ private fun ExerciseBody(
     }
 
     if (ExerciseSlot.NUMBER_LINE in plan.slots) {
-        MaticaSectionHeader("Recta: dónde cae la solución")
-        MaticaCard {
-            NumberLineView(
-                model = plan.numberLine,
-                selected = selected,
-                onValueChange = { value -> picked = nearestTick(value, plan.numberLine.ticks).toString() },
-            )
-            MaticaCaption("Arrastra o usa las flechas. El valor se engancha a la marca más cercana: la recta no inventa puntos.")
-            // `NumberLineView` ya expone sus dos flechas con estas etiquetas; repetir aquí los botones
-            // duplicaba el control y hacía que un lector de pantalla anunciara «Marca siguiente» dos veces.
-            Text("Marcado: $selected", modifier = Modifier.fillMaxWidth().padding(horizontal = MaticaSpacing.sm))
+        MaticaSection("Recta: dónde cae la solución") {
+            MaticaCard {
+                NumberLineView(
+                    model = plan.numberLine,
+                    selected = selected,
+                    onValueChange = { value -> picked = nearestTick(value, plan.numberLine.ticks).toString() },
+                )
+                MaticaCaption("Arrastra o usa las flechas. El valor se engancha a la marca más cercana: la recta no inventa puntos.")
+                // `NumberLineView` ya expone sus dos flechas con estas etiquetas; repetir aquí los botones
+                // duplicaba el control y hacía que un lector de pantalla anunciara «Marca siguiente» dos veces.
+                Text("Marcado: $selected", modifier = Modifier.fillMaxWidth().padding(horizontal = MaticaSpacing.sm))
+            }
         }
     }
 
     if (plan.hasGraph) {
-        MaticaSectionHeader("Plano: las dos rectas se cortan en la solución")
         val window = graphWindow(plan)
-        CartesianGraphView(
-            series = seriesOf(plan.lines.first(), window.xFrom, window.xTo, window.yFrom, window.yTo),
-            axisLabelX = plan.variable,
-            axisLabelY = "y",
-            solutionMarkers = listOf(plan.solution),
-            xFrom = window.xFrom,
-            xTo = window.xTo,
-        )
-        MaticaCaption(
-            "Sólo se dibuja el lado izquierdo. La otra recta es ${plan.lines.last().slope}·${plan.variable} + " +
-                "${plan.lines.last().intercept}: si no son rectas, el plano se omite en lugar de fingirse.",
-        )
+        MaticaSection("Plano: las dos rectas se cortan en la solución") {
+            CartesianGraphView(
+                series = seriesOf(plan.lines.first(), window.xFrom, window.xTo, window.yFrom, window.yTo),
+                axisLabelX = plan.variable,
+                axisLabelY = "y",
+                solutionMarkers = listOf(plan.solution),
+                xFrom = window.xFrom,
+                xTo = window.xTo,
+            )
+            MaticaCaption(
+                "Sólo se dibuja el lado izquierdo. La otra recta es ${plan.lines.last().slope}·${plan.variable} + " +
+                    "${plan.lines.last().intercept}: si no son rectas, el plano se omite en lugar de fingirse.",
+            )
+        }
     } else {
         // El plan decide no dibujar el plano, pero el silencio dejaba la sección cortada sin motivo: la
         // pantalla lo dice en lugar de hacer desaparecer el apartado.
@@ -476,57 +479,59 @@ private fun ExerciseBody(
     }
 
     if (ExerciseSlot.QUOTIENT_SPLIT in plan.slots) {
-        MaticaSectionHeader("Reparto del cociente")
+        MaticaSection("Reparto del cociente") {
+            MaticaCard {
+                plan.quotientParts.forEach { part ->
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.md)) {
+                        FractionView(value = part, asMixed = false, modifier = Modifier.weight(1f))
+                        FractionStrip(value = part, modifier = Modifier.weight(2f))
+                    }
+                }
+                MaticaCaption("Cada término del numerador entre el denominador. Sumarlas de nuevo regresa el numerador original.")
+            }
+        }
+    }
+
+    MaticaSection("Verificación") {
+        plan.verification.forEach { line ->
+            MaticaCard {
+                EquationView(text = line, variable = plan.variable)
+            }
+        }
+        MaticaCaption(
+            if (plan.verified) "La sustitución quedó verificada por el motor." else "El motor no verificó esta sustitución: revísala antes de darla buena.",
+        )
         MaticaCard {
-            plan.quotientParts.forEach { part ->
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.md)) {
-                    FractionView(value = part, asMixed = false, modifier = Modifier.weight(1f))
-                    FractionStrip(value = part, modifier = Modifier.weight(2f))
+            Text("Tu respuesta", style = MaterialTheme.typography.titleMedium)
+            AnswerRow(plan = plan, session = session) { outcome, proposal ->
+                picked = proposal.toString()
+                if (outcome is VerificationOutcome.Satisfies) {
+                    navigator.go(MaticaRoute.Rewards)
                 }
             }
-            MaticaCaption("Cada término del numerador entre el denominador. Sumarlas de nuevo regresa el numerador original.")
+            MaticaButton(
+                label = "Mostrar la solución",
+                onClick = {
+                    picked = (session.solutionOf(plan) ?: plan.solution).toString()
+                    revealed = true
+                },
+                variant = MaticaButtonVariant.TEXT,
+                fullWidth = true,
+            )
         }
-    }
-
-    MaticaSectionHeader("Verificación")
-    plan.verification.forEach { line ->
-        MaticaCard {
-            EquationView(text = line, variable = plan.variable)
-        }
-    }
-    MaticaCaption(
-        if (plan.verified) "La sustitución quedó verificada por el motor." else "El motor no verificó esta sustitución: revísala antes de darla buena.",
-    )
-
-    MaticaCard {
-        Text("Tu respuesta", style = MaterialTheme.typography.titleMedium)
-        AnswerRow(plan = plan, session = session) { outcome, proposal ->
-            picked = proposal.toString()
-            if (outcome is VerificationOutcome.Satisfies) {
-                navigator.go(MaticaRoute.Rewards)
-            }
-        }
-        MaticaButton(
-            label = "Mostrar la solución",
-            onClick = {
-                picked = (session.solutionOf(plan) ?: plan.solution).toString()
-                revealed = true
-            },
-            variant = MaticaButtonVariant.TEXT,
-            fullWidth = true,
-        )
     }
 
     // El plan pide la solución como fracción, pero pintarla siempre la dejaba a la vista antes de que el
     // estudiante escribiera nada: sólo se muestra cuando él pide verla.
     if (revealed && ExerciseSlot.ANSWER_FRACTION in plan.slots) {
-        MaticaSectionHeader("La solución como fracción")
-        MaticaCard {
-            FractionView(value = plan.solution, asMixed = true, modifier = Modifier.fillMaxWidth())
+        MaticaSection("La solución como fracción") {
+            MaticaCard {
+                FractionView(value = plan.solution, asMixed = true, modifier = Modifier.fillMaxWidth())
+            }
         }
     }
 
-    Row(horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.sm), modifier = Modifier.fillMaxWidth().padding(bottom = MaticaSpacing.md)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.sm), modifier = Modifier.fillMaxWidth()) {
         MaticaButton(
             label = "Ejercicio anterior",
             onClick = { navigator.replace(MaticaRoute.Practice(templateIdOf(plan), seed - MaticaSession.SEED_STRIDE)) },
