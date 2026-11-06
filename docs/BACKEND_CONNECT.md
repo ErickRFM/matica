@@ -2,6 +2,7 @@
 
 ## Estado verificado
 - El APK mantiene matemáticas/ejercicios locales; la cuenta sigue desactivada hasta tener Auth real.
+- El Docker construye sólo la API con `-Pmatica.backendOnly=true`; comparte el archivo `SkillId.kt` directamente con el motor y no necesita Android SDK.
 - Backend `:backend:api`: `GET /healthz`, `GET /readyz`, `GET /v1/topics`. El catálogo sirve temas sin grados escolares.
 - `/healthz` significa que responde el proceso; **no** certifica Postgres. `/readyz` devuelve 503 sin acceso JDBC.
 - No existen aún endpoints de escritura, recompensas, sincronización ni login. No simular que existen.
@@ -22,8 +23,8 @@ El servicio utiliza sólo `DATABASE_URL` para probar PostgreSQL; no aplica migra
 ## Arranque y validación
 
 ```bash
-./gradlew :backend:api:test
-./gradlew :backend:api:run
+./gradlew -Pmatica.backendOnly=true :backend:api:test
+./gradlew -Pmatica.backendOnly=true :backend:api:run
 curl -i http://localhost:10000/healthz
 curl -i http://localhost:10000/v1/topics
 curl -i http://localhost:10000/readyz
