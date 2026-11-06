@@ -5,6 +5,14 @@ plugins {
     alias(libs.plugins.compose.compiler)
 }
 
+val maticaApiBaseUrl = providers.gradleProperty("matica.api.baseUrl")
+    .orElse(providers.environmentVariable("MATICA_API_BASE_URL"))
+    .orElse("")
+    .get()
+require(maticaApiBaseUrl.isBlank() || maticaApiBaseUrl.startsWith("https://")) {
+    "MATICA_API_BASE_URL debe ser HTTPS (o dejarse vacía para modo offline)."
+}
+
 android {
     namespace = "mx.matica.app"
     compileSdk = 37
@@ -16,6 +24,7 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("String", "MATICA_API_BASE_URL", "\"$maticaApiBaseUrl\"")
     }
 
     buildTypes {
@@ -30,6 +39,7 @@ android {
     }
 
     buildFeatures {
+        buildConfig = true
         compose = true
     }
 

@@ -23,6 +23,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,6 +33,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import mx.matica.design.brand.MaticaMark
 import mx.matica.design.motion.LocalMotionStyle
 import mx.matica.design.motion.MaticaMotion
@@ -89,8 +91,8 @@ fun WelcomeScreen(session: MaticaSession, navigator: MaticaNavigator) {
             fullWidth = true,
         )
         MaticaCaption(
-            "Mática no pide datos de adultos ni muestra anuncios. El perfil vive en este dispositivo " +
-                "hasta que exista el servicio de cuentas.",
+            "Mática no muestra anuncios ni solicita datos personales innecesarios. " +
+                "El avance permanece en esta sesión mientras no exista sincronización.",
         )
     }
 }
@@ -269,7 +271,7 @@ fun LoginScreen(session: MaticaSession, navigator: MaticaNavigator) {
             }
 
             MaticaCard {
-                Text("Cuenta de la escuela", style = MaterialTheme.typography.titleMedium)
+                Text("Cuenta de Mática", style = MaterialTheme.typography.titleMedium)
                 MaticaCaption(
                     "El servicio de cuentas todavía no está construido. El formulario no se puede " +
                         "enviar: está aquí para que sepas qué pedirá cuando exista.",
@@ -277,8 +279,8 @@ fun LoginScreen(session: MaticaSession, navigator: MaticaNavigator) {
                 MaticaField(
                     value = email,
                     onValueChange = { email = it },
-                    label = "Correo de la escuela",
-                    placeholder = "nombre@escuela.mx",
+                    label = "Correo electrónico",
+                    placeholder = "tu@correo.com",
                     keyboard = KeyboardType.Email,
                     enabled = false,
                     hint = "Desactivado hasta que exista el servicio.",
@@ -301,8 +303,7 @@ fun LoginScreen(session: MaticaSession, navigator: MaticaNavigator) {
                 fullWidth = true,
             )
             MaticaCaption(
-                "Sin cuenta también hay ruta, repasos y logros: el perfil vive en este teléfono y " +
-                    "Mática no pide tu edad.",
+                "Puedes practicar sin cuenta. Por ahora el progreso sólo permanece durante la sesión.",
             )
 
             MaticaSection("Cuando exista la cuenta") {
@@ -696,6 +697,7 @@ private fun LevelRow(skill: SkillId, level: MasteryLevel, detail: String) {
 @Composable
 fun SettingsScreen(session: MaticaSession, navigator: MaticaNavigator) {
     val settings = session.settings
+    val coroutineScope = rememberCoroutineScope()
     MaticaScreen(title = "Ajustes", session = session, onBack = { navigator.goBack() }, subtitle = "Accesibilidad primero") {
         MaticaSection("Tema") {
             Row(horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.sm)) {
@@ -745,29 +747,15 @@ fun SettingsScreen(session: MaticaSession, navigator: MaticaNavigator) {
                 fullWidth = true,
             )
         }
-        MaticaSection("Grado") {
-            // NEUTRAL y no TEXT: sin superficie las tres opciones se leían como etiquetas y sólo
-            // la elegada parecía un botón. No van en una fila de tres: «2.º de secundaria» necesita
-            // ~150 dp de etiqueta y el teléfono deja ~116 dp por celda, así que se partiría.
-            listOf("1.º de secundaria", "2.º de secundaria", "3.º de secundaria").forEach { grade ->
-                MaticaButton(
-                    label = grade,
-                    onClick = { session.updateSettings { it.copy(grade = grade) } },
-                    variant = if (settings.grade == grade) MaticaButtonVariant.PRIMARY else MaticaButtonVariant.NEUTRAL,
-                    fullWidth = true,
-                )
-            }
-        }
         MaticaSection("Conexión") {
             MaticaButton(
-                label = if (session.offline) "Simular conexión" else "Simular sin conexión",
-                onClick = { session.setConnection(session.offline) },
+                label = if (session.offline) "Comprobar conexión" else "Volver a comprobar",
+                onClick = { coroutineScope.launch { session.refreshConnection() } },
                 variant = MaticaButtonVariant.OUTLINE,
                 fullWidth = true,
             )
             MaticaCaption(
-                "La conexión sólo afecta a lo que depende del backend (cuentas y aulas). El motor y el " +
-                    "registro de evidencia siguen funcionando sin ella.",
+                "Estado real del servidor. El motor matemático y la práctica local funcionan también sin conexión.",
             )
             session.message?.let { MaticaCaption(it) }
         }

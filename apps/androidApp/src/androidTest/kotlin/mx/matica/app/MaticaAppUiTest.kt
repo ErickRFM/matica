@@ -179,27 +179,13 @@ class MaticaAppUiTest {
     }
 
     @Test
-    fun laOpcionDeGradoNoElegidaTieneSuperficiePropia() {
-        val session = session()
-        rule.setContent { MaticaApp(session = session, navigator = MaticaNavigator(MaticaRoute.Settings)) }
+    fun ajustesNoClasificanAQuienPracticaPorGradoEscolar() {
+        rule.setContent { MaticaApp(session = session(), navigator = MaticaNavigator(MaticaRoute.Settings)) }
         rule.waitForIdle()
-
-        // Se mide el relleno, no el rótulo: en el centro del botón siempre hay tinta, así que un
-        // `TEXT` pasaría la prueba por los pelos. A 12 px del borde izquierdo sólo hay superficie, y
-        // ésa es la que con la variante de texto era idéntica al fondo de pantalla.
-        val otra = listOf("1.º de secundaria", "2.º de secundaria", "3.º de secundaria")
-            .first { it != session.settings.grade }
-        val opcion = rule.onNode(hasText(otra) and hasClickAction()).fetchSemanticsNode().boundsInWindow
-        val raiz = rule.onRoot().fetchSemanticsNode().boundsInWindow
-        val centroY = ((opcion.top + opcion.bottom) / 2f - raiz.top).roundToInt()
-        val dentro = pixelDeLaRaiz((opcion.left + 12f - raiz.left).roundToInt(), centroY)
-        val fuera = pixelDeLaRaiz((opcion.left - 8f - raiz.left).roundToInt(), centroY)
-        assertTrue(
-            !mismoColor(dentro, fuera),
-            "«$otra» vale #${Integer.toHexString(dentro)} por dentro y #${Integer.toHexString(fuera)} ocho " +
-                "px a su izquierda: la opción sin elegir no tiene superficie, se lee como una etiqueta más " +
-                "del apartado y no como algo que se puede tocar.",
-        )
+        // Una ruta de matemáticas no debe mostrar primaria/secundaria ni preguntar el grado.
+        listOf("Grado", "1.º de secundaria", "2.º de secundaria", "3.º de secundaria").forEach { etiqueta ->
+            rule.onAllNodes(hasText(etiqueta)).assertCountEquals(0)
+        }
     }
 
     @Test
@@ -284,7 +270,7 @@ class MaticaAppUiTest {
      * El formulario de un servicio bloqueado tiene que verse aunque el estado diga que no hay datos:
      * anidado dentro del `content` de `MaticaStateView` sólo se compone en Success, y las dos pantallas
      * bloqueadas quedaban con el campo invisible (así lo cazó la instrumentación al navegar hasta
-     * «Correo de la escuela»).
+     * «Correo electrónico»).
      */
     @Test
     fun losServiciosBloqueadosMuestranSuFormularioDesactivado() {
@@ -293,7 +279,7 @@ class MaticaAppUiTest {
         rule.waitForIdle()
 
         listOf(
-            Triple(MaticaRoute.Login, "Correo de la escuela", "Desactivado hasta que exista el servicio."),
+            Triple(MaticaRoute.Login, "Correo electrónico", "Desactivado hasta que exista el servicio."),
             Triple(MaticaRoute.Classroom, "Código de invitación", "Desactivado: no hay servidor que lo valide."),
         ).forEach { (destino, etiqueta, aviso) ->
             rule.runOnIdle { route = destino }
@@ -318,7 +304,7 @@ class MaticaAppUiTest {
                 SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading),
         ).assertIsDisplayed()
         rule.onNodeWithText("Cuentas en preparación").assertIsDisplayed()
-        rule.onNodeWithText("Correo de la escuela").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Correo electrónico").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("Contraseña").performScrollTo().assertIsDisplayed()
         // Las etiquetas son nodos de texto sueltos; el estado desactivado vive en los dos campos.
         rule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.Disabled)).assertCountEquals(2)

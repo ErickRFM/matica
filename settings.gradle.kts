@@ -27,10 +27,16 @@ dependencyResolutionManagement {
 
 rootProject.name = "matica"
 
-include(":apps:androidApp")
-include(":shared:math-engine")
-include(":shared:math-remote")
-include(":shared:learning-engine")
-include(":shared:exercises")
-include(":shared:presentation")
-include(":design-system")
+// El contenedor de API se construye sin descargar Android SDK ni configurar módulos de app.
+if (providers.gradleProperty("matica.backendOnly").orNull == "true") {
+    include(":backend:api")
+} else {
+    include(":apps:androidApp")
+    include(":shared:math-engine")
+    include(":shared:math-remote")
+    include(":shared:learning-engine")
+    include(":shared:exercises")
+    include(":shared:presentation")
+    include(":design-system")
+    include(":backend:api")
+}

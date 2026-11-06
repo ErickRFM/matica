@@ -29,6 +29,7 @@ kotlin {
             implementation(compose.foundation)
             implementation(compose.material3)
             implementation(compose.animation)
+            implementation(libs.kotlinx.coroutines.core)
             api(project(":design-system"))
             api(project(":shared:math-engine"))
             api(project(":shared:learning-engine"))
