@@ -99,6 +99,7 @@ class FractionLinearTemplate : ExerciseTemplate {
 /** Currículo de plantillas del MVP: cada una apunta a una habilidad del grafo. */
 object ExerciseTemplates {
     val all: List<ExerciseTemplate> = listOf(
+        IntegerOpsTemplate(),
         TwoStepLinearTemplate(),
         DistributiveLinearTemplate(),
         FractionLinearTemplate(),
