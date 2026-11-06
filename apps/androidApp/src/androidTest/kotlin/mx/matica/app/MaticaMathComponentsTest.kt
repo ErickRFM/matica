@@ -5,6 +5,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsNodeInteraction
@@ -14,9 +15,11 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.datetime.LocalDate
 import mx.matica.design.theme.MaticaTheme
@@ -32,6 +35,7 @@ import mx.matica.presentation.math.FractionView
 import mx.matica.presentation.math.NumberLineModel
 import mx.matica.presentation.math.NumberLineView
 import mx.matica.presentation.math.equationAnnouncement
+import mx.matica.presentation.math.figureCandidates
 import mx.matica.presentation.math.fractionModel
 import mx.matica.presentation.math.nearestTick
 import mx.matica.presentation.route.MaticaNavigator
@@ -41,9 +45,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Los cuatro componentes matemáticos dibujados en el dispositivo a partir del plan de render que
- * produce el motor de ejercicios. Ningún valor de estas aserciones lo inventa la prueba: todos salen
- * del mismo `ExerciseRenderPlan` que consume la pantalla.
+ * Los componentes matemáticos dibujados en el dispositivo a partir del plan de render que produce el
+ * motor de ejercicios. Ningún valor de estas aserciones lo inventa la prueba: todos salen del mismo
+ * `ExerciseRenderPlan` que consume la pantalla.
  */
 @RunWith(AndroidJUnit4::class)
 class MaticaMathComponentsTest {
@@ -142,6 +146,108 @@ class MaticaMathComponentsTest {
     }
 
     @Test
+    fun laFiguraSeDibujaConLosLadosExactosDeLaEcuacion() {
+        val session = session()
+        val plan = requireNotNull(session.startPractice(GEOMETRY_TEMPLATE, 1L)) { "Sin plan geométrico" }
+        val figure = requireNotNull(plan.figure) { "La plantilla geométrica no dejó figura: ${plan.equationText}" }
+        rule.setContent {
+            MaticaApp(session = session, navigator = MaticaNavigator(MaticaRoute.Practice(GEOMETRY_TEMPLATE, 1L)))
+        }
+        rule.waitForIdle()
+
+        rule.onNode(hasText("Figura: ${figure.totalLabelEs} dibujado")).assertPresent("la sección de la figura")
+        rule.onNode(
+            hasText("Se pide ${figure.goalEs} · con lado ${plan.solution} tienes ${figure.totalLabelEs} ${figure.total}"),
+        ).assertPresent("la lectura del lado y su total")
+        rule.onNode(hasContentDescription("Rectángulo de lado conocido ${figure.knownSide}", substring = true))
+            .assertPresent("la figura anunciada al lector de pantalla")
+        rule.onNode(hasText("Coincide: ese lado es el que pide la ecuación", substring = true))
+            .assertPresent("el aviso de que la hipótesis ya cuadra")
+        assertTrue(
+            engine.parse(plan.equationText) is ParseOutcome.Success && figure.totalAt(plan.solution) == figure.total,
+            "La figura pintada no cierra con su ecuación: ${plan.equationText}",
+        )
+    }
+
+    @Test
+    fun lasFlechasDeLaFiguraMuevenElLadoPorCandidatosExactos() {
+        val session = session()
+        val plan = requireNotNull(session.startPractice(GEOMETRY_TEMPLATE, 1L)) { "Sin plan geométrico" }
+        val figure = requireNotNull(plan.figure)
+        val candidates = figureCandidates(plan.numberLine)
+        rule.setContent {
+            MaticaApp(session = session, navigator = MaticaNavigator(MaticaRoute.Practice(GEOMETRY_TEMPLATE, 1L)))
+        }
+        rule.waitForIdle()
+
+        val start = candidates.indexOfFirst { it == plan.solution }
+        assertTrue(start in 0 until candidates.lastIndex, "La solución $plan.solution no quedó en un candidato alcanzable: $candidates")
+
+        rule.onNode(hasContentDescription("Lado siguiente")).performScrollTo().performClick()
+        rule.waitForIdle()
+        val advanced = candidates[start + 1]
+        rule.onNode(hasText("Lado $advanced · ${figure.totalLabelEs} ${figure.totalAt(advanced)}"))
+            .assertPresent("el lado siguiente, con su total exacto")
+        rule.onNode(hasText("Coincide: ese lado es el que pide la ecuación", substring = true))
+            .assertAbsentNow("la coincidencia con un lado que ya no es el de la ecuación")
+
+        rule.onNode(hasContentDescription("Lado anterior")).performClick()
+        rule.waitForIdle()
+        rule.onNode(hasText("Lado ${plan.solution} · ${figure.totalLabelEs} ${figure.total}"))
+            .assertPresent("regresar al valor de la ecuación")
+    }
+
+    @Test
+    fun unaEcuacionQueNoSeLeeComoRectanguloNoDibujaFigura() {
+        val session = session()
+        val plan = requireNotNull(session.startPractice("integer-ops", 1L)) { "Sin plan de enteros" }
+        assertNull(plan.figure, "${plan.equationText} no es un rectángulo y aun así salió figura.")
+        rule.setContent {
+            MaticaApp(session = session, navigator = MaticaNavigator(MaticaRoute.Practice("integer-ops", 1L)))
+        }
+        rule.waitForIdle()
+        rule.onNode(hasText("Figura:", substring = true)).assertAbsentNow("una sección de geometría sin datos que la sostengan")
+    }
+
+    @Test
+    fun arrastrarElPlanoMueveElPuntoSobreLaRectaConValoresExactos() {
+        val session = session()
+        val plan = requireNotNull(session.startPractice(TEMPLATE, 1L)) { "Sin plan con plano" }
+        assertTrue(plan.hasGraph, "$TEMPLATE tenía que traer plano para poder arrastrar su punto.")
+        val line = plan.lines.first()
+        val candidates = plan.numberLine.orderedTicks
+        rule.setContent {
+            MaticaApp(session = session, navigator = MaticaNavigator(MaticaRoute.Practice(TEMPLATE, 1L)))
+        }
+        rule.waitForIdle()
+
+        val graph = rule.onNode(hasContentDescription("Gráfica en el plano", substring = true))
+        graph.assertPresent("el plano")
+        rule.onNode(hasText("${plan.variable} = ${plan.solution} · y = ${line.slope * plan.solution + line.intercept}"))
+            .assertPresent("el punto arrancando en la intersección de las dos rectas")
+
+        graph.performScrollTo()
+        graph.performTouchInput {
+            down(Offset(left + width * 0.2f, center.y))
+            moveTo(Offset(left + width * 0.75f, center.y))
+            up()
+        }
+        rule.waitForIdle()
+
+        val readout = textWith("· y =")
+        val movedX = valueOf(readout.substringAfter("${plan.variable} =").substringBefore("·").trim())
+        assertNotEquals(plan.solution, movedX, "El arrastre dejó el punto donde estaba.")
+        assertTrue(movedX in candidates, "El arrastre terminó en un valor que no es marca del plano: «$readout»")
+        assertEquals(
+            "${plan.variable} = $movedX · y = ${line.slope * movedX + line.intercept}",
+            readout,
+            "El punto se salió de la recta: el lecturado no coincide con la función.",
+        )
+        rule.onNode(hasContentDescription("Punto en la recta: ${plan.variable} = $movedX", substring = true))
+            .assertPresent("el anuncio del punto movido")
+    }
+
+    @Test
     fun laFraccionMixtaSeAnunciaDistintoQueLaImpropia() {
         val value = Rational.of(7, 2)
         val mixed = fractionModel(value, asMixed = true)
@@ -195,12 +301,18 @@ class MaticaMathComponentsTest {
 
     private fun session(): MaticaSession = MaticaSession(today = LocalDate(2026, 11, 5))
 
-    private fun markedValue(): Rational {
-        val node = rule.onNode(hasText("Marcado:", substring = true)).fetchSemanticsNode()
-        val raw = node.config.getOrNull(SemanticsProperties.Text)?.first()?.text.orEmpty()
-        val value = engine.evaluate(raw.substringAfter("Marcado:").trim())
-        return (value as? EvalOutcome.Value)?.value
-            ?: throw AssertionError("La pantalla no muestra un valor legible: «$raw»")
+    private fun markedValue(): Rational = valueOf(textWith("Marcado:").substringAfter("Marcado:").trim())
+
+    /** El motor lee lo que la pantalla escribió: una aserción sobre texto que nadie sabe parsear no prueba nada. */
+    private fun valueOf(expression: String): Rational =
+        (engine.evaluate(expression) as? EvalOutcome.Value)?.value
+            ?: throw AssertionError("La pantalla no muestra un valor legible: «$expression»")
+
+    private fun textWith(prefix: String): String {
+        val raw = rule.onNode(hasText(prefix, substring = true)).fetchSemanticsNode()
+            .config.getOrNull(SemanticsProperties.Text)?.first()?.text.orEmpty()
+        assertTrue(raw.contains(prefix), "La pantalla no muestra ningún texto con «$prefix»: «$raw»")
+        return raw
     }
 
     private fun SemanticsNodeInteraction.assertPresent(what: String) {
@@ -211,6 +323,11 @@ class MaticaMathComponentsTest {
     private fun SemanticsNodeInteraction.assertAbsent(what: String) {
         val leaked = runCatching { assertExists() }.isSuccess
         assertTrue(!leaked, "$what apareció sin que el estudiante la pidiera.")
+    }
+
+    private fun SemanticsNodeInteraction.assertAbsentNow(what: String) {
+        val leaked = runCatching { assertExists() }.isSuccess
+        assertTrue(!leaked, "$what seguía en pantalla aunque el estado ya no la sostiene.")
     }
 
     /** El componente está montado pero puede quedar bajo el pliegue: se acerca a la vista y ahí se pinta. */
@@ -228,5 +345,6 @@ class MaticaMathComponentsTest {
 
     private companion object {
         const val TEMPLATE = "two-step-linear"
+        const val GEOMETRY_TEMPLATE = "rectangle-perimeter"
     }
 }
