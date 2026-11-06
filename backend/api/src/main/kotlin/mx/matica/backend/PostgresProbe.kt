@@ -42,7 +42,10 @@ internal object PostgresProbe {
             DriverManager.getConnection(config.jdbcUrl, config.properties).use { connection ->
                 connection.createStatement().use { statement ->
                     statement.queryTimeout = 3
-                    statement.executeQuery("SELECT 1").use { result -> result.next() && result.getInt(1) == 1 }
+                    // Health is not readiness: the real Mática schema must also exist.
+                    statement.executeQuery("SELECT EXISTS (SELECT 1 FROM matica.schema_version WHERE version = 1)").use { result ->
+                        result.next() && result.getBoolean(1)
+                    }
                 }
             }
         } catch (_: Exception) {
