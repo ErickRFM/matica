@@ -98,7 +98,12 @@ fun MaticaButton(
         if (variant == MaticaButtonVariant.OUTLINE) Modifier.border(2.dp, pair.foreground, shape) else Modifier
 
     Row(
-        modifier = widthModifier
+        // El `modifier` del llamador va primero: es el que trae el `weight(1f)` de las filas de
+        // opciones. Se estaba ignorando (la fila construía su propio `widthModifier` desde cero), así
+        // que cuatro botones pesados se repartían el ancho por su contenido y el último, «Rápida»,
+        // terminaba escrito una letra por renglón en el teléfono de 392 dp.
+        modifier = modifier
+            .then(widthModifier)
             // Con el relleno propio del rótulo el botón medía ~44 dp de alto: por debajo del objetivo
             // táctil de Material. El `heightIn` lo sube a 48 sin cambiar el grosor visual del botón,
             // porque el texto sigue centrado.

@@ -249,6 +249,9 @@ fun HintSheetScreen(skill: SkillId, lessonNumber: Int, session: MaticaSession, n
         title = "Pistas",
         subtitle = plan?.labelEs,
         session = session,
+        // Sin insignias: la hoja es una capa sobre el reproductor, que ya las muestra justo encima.
+        // Repetirlas dentro del 78 % de alto de la hoja era quitar sitio a las pistas.
+        showChips = false,
         onBack = { navigator.goBack() },
     ) {
         if (plan == null) {
@@ -433,7 +436,10 @@ private fun ExerciseBody(
     val selected = parseNumber(session.math, picked) ?: plan.solution
 
     MaticaCard {
-        Text(plan.strategyEs, style = MaterialTheme.typography.titleMedium)
+        // bodyLarge y no titleMedium: `strategyEs` es una frase de dos líneas («Primero el producto
+        // con su signo: menos por negativo da positivo…»), y en peso de título se leía como una orden
+        // gritada por encima de la propia ecuación.
+        Text(plan.strategyEs, style = MaterialTheme.typography.bodyLarge)
         EquationView(text = plan.equationText, variable = plan.variable)
     }
 

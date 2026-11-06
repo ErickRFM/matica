@@ -8,6 +8,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasAnySibling
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
@@ -18,6 +19,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlin.test.assertTrue
 import kotlinx.datetime.LocalDate
 import mx.matica.design.tokens.MaticaPalette
@@ -84,6 +86,92 @@ class MaticaAppUiTest {
         rule.waitForIdle()
         rule.onNodeWithText("Comprobar paso").assertIsDisplayed()
         assertEquals(MaticaRoute.LessonPlayer(skill, 1), navigator.current)
+    }
+
+    @Test
+    fun laHojaDePistasPintaUnaSuperficieOpacaSobreElReproductor() {
+        val session = session()
+        val navigator = MaticaNavigator(MaticaRoute.LessonPlayer(SkillId.BALANCE_PRINCIPLE, 1))
+        rule.setContent { MaticaApp(session = session, navigator = navigator) }
+        rule.waitForIdle()
+
+        // El píxel se calibra con la hoja cerrada, no con un color escrito a mano: lo que tiene que
+        // cambiar es lo que hay en el sitio donde estaba el botón primario del reproductor.
+        val boton = rule.onNodeWithText("Comprobar paso").fetchSemanticsNode().boundsInWindow
+        val raiz = rule.onRoot().fetchSemanticsNode().boundsInWindow
+        val x = ((boton.left + boton.right) / 2f - raiz.left).roundToInt()
+        val y = ((boton.top + boton.bottom) / 2f - raiz.top).roundToInt()
+        val debajo = pixelDeLaRaiz(x, y)
+
+        rule.onNodeWithText("Pista").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Mostrar una pista más").assertIsDisplayed()
+
+        val encima = pixelDeLaRaiz(x, y)
+        assertTrue(
+            !mismoColor(debajo, encima),
+            "En ($x,$y), donde estaba «Comprobar paso», se leía #${Integer.toHexString(debajo)} con la hoja " +
+                "cerrada y sigue #${Integer.toHexString(encima)} con ella abierta: la capa modal se pinta " +
+                "transparente y el reproductor se filtra a través de las pistas.",
+        )
+
+        val tituloDeLaHoja = rule.onNodeWithText("Pistas").fetchSemanticsNode().boundsInWindow
+        assertTrue(
+            tituloDeLaHoja.top >= raiz.top + raiz.height * FRACCION_SUPERIOR_DE_SCIM,
+            "El título «Pistas» arranca en y=${tituloDeLaHoja.top} dentro de una zona de ${raiz.height} px: " +
+                "cae en la misma franja que el título de la pantalla de abajo y los dos textos se pintan uno " +
+                "sobre otro, que es lo que salió en la captura del emulador.",
+        )
+    }
+
+    private fun pixelDeLaRaiz(x: Int, y: Int): Int {
+        val bitmap = rule.onRoot().captureToImage().asAndroidBitmap()
+        return bitmap.getPixel(x.coerceIn(0, bitmap.width - 1), y.coerceIn(0, bitmap.height - 1))
+    }
+
+    @Test
+    fun lasOpcionesDelDiagnosticoSeRecortanSobreLaTarjeta() {
+        val session = session()
+        rule.setContent { MaticaApp(session = session, navigator = MaticaNavigator(MaticaRoute.Diagnosis)) }
+        rule.waitForIdle()
+        val pregunta = requireNotNull(session.currentDiagnosis()).pendingQuestions().first()
+
+        // El relleno del botón neutro es BlueMist y la tarjeta se pinta con surfaceVariant, que en
+        // claro también es BlueMist: dentro de una tarjeta el botón no tenía fondo ni borde y las
+        // cuatro opciones parecían texto suelto. Se mide el píxel, no la intención: a la izquierda del
+        // botón sigue habiendo tarjeta, así que si ningún punto del borde izquierdo difiere de ese
+        // punto exterior, la opción no se recorta contra nada.
+        val opcion = rule.onNode(hasText(pregunta.options[0]) and hasClickAction()).fetchSemanticsNode().boundsInWindow
+        val raiz = rule.onRoot().fetchSemanticsNode().boundsInWindow
+        val centroY = ((opcion.top + opcion.bottom) / 2f - raiz.top).roundToInt()
+        val fuera = pixelDeLaRaiz((opcion.left - 8f - raiz.left).roundToInt(), centroY)
+        val seRecorta = (0..12).any { desplazamiento ->
+            pixelDeLaRaiz((opcion.left - raiz.left).roundToInt() + desplazamiento, centroY) != fuera
+        }
+        assertTrue(
+            seRecorta,
+            "La opción «${pregunta.options[0]}» empieza en x=${opcion.left} y los 12 px siguientes valen lo " +
+                "mismo que la tarjeta de al lado (#${Integer.toHexString(fuera)}): el botón no se dibuja " +
+                "recortado sobre la tarjeta y el estudiante ve cuatro frases, no cuatro respuestas.",
+        )
+    }
+
+    private fun mismoColor(uno: Int, otro: Int): Boolean =
+        intArrayOf(16, 8, 0).all { turno -> abs(((uno shr turno) and 0xFF) - ((otro shr turno) and 0xFF)) <= 2 }
+
+    @Test
+    fun desdeHoySePuedeAbrirElPerfilLocal() {
+        val session = session()
+        val navigator = MaticaNavigator(MaticaRoute.Home)
+        rule.setContent { MaticaApp(session = session, navigator = navigator) }
+        rule.waitForIdle()
+
+        // «Mi perfil» se probaba montando la ruta a mano, y así el test verde convivía con un destino
+        // al que ningún botón llevaba. Aquí se recorre el camino del estudiante, no el del navegador.
+        rule.onNodeWithText("Mi perfil").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Reiniciar el perfil local").assertIsDisplayed()
+        assertEquals(MaticaRoute.Profile, navigator.current)
     }
 
     @Test
@@ -172,14 +260,13 @@ class MaticaAppUiTest {
         rule.onRoot().captureToImage().asAndroidBitmap().getPixel(4, 4)
 
     private fun assertCercaDe(expected: Int, actual: Int, message: String) {
-        val canales = intArrayOf(16, 8, 0)
-        val desviado = canales.any { shift ->
-            abs(((expected shr shift) and 0xFF) - ((actual shr shift) and 0xFF)) > 2
-        }
-        if (desviado) {
+        if (!mismoColor(expected, actual)) {
             throw AssertionError(
                 "$message: esperado #${Integer.toHexString(expected)} real #${Integer.toHexString(actual)}",
             )
         }
     }
 }
+
+/** La hoja modal ocupa el 78 % de abajo, así que su cabecera no puede nacer por encima del 22 %. */
+private const val FRACCION_SUPERIOR_DE_SCIM = 0.22f

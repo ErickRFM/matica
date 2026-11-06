@@ -115,7 +115,10 @@ private fun QuestionCard(question: mx.matica.learning.diagnosis.DiagnosisQuestio
             MaticaButton(
                 label = option,
                 onClick = { onAnswer(index) },
-                variant = MaticaButtonVariant.NEUTRAL,
+                // OUTLINE y no NEUTRAL: el relleno del neutro es BlueMist, y BlueMist es también
+                // `surfaceVariant`, el color de la tarjeta. Dentro de una tarjeta el botón quedaba sin
+                // borde ni fondo: cuatro respuestas que parecían texto suelto (captura del 2026-11-06).
+                variant = MaticaButtonVariant.OUTLINE,
                 fullWidth = true,
             )
         }
@@ -267,7 +270,10 @@ fun HomeScreen(session: MaticaSession, navigator: MaticaNavigator) {
                             MaticaButton(
                                 label = "Abrir habilidad",
                                 onClick = { navigator.go(MaticaRoute.SkillDetail(recommendation.skill)) },
-                                variant = MaticaButtonVariant.NEUTRAL,
+                                // Mismo caso que las opciones del diagnóstico: dentro de la tarjeta el
+                                // neutro se pinta con el color de la propia tarjeta y desaparece.
+                                variant = MaticaButtonVariant.OUTLINE,
+                                fullWidth = true,
                             )
                         }
                     }
@@ -275,10 +281,24 @@ fun HomeScreen(session: MaticaSession, navigator: MaticaNavigator) {
             }
         }
         MaticaSection("Accesos") {
-            Row(horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.sm)) {
-                MaticaButton("Repasos", { navigator.go(MaticaRoute.ReviewQueue) }, Modifier.weight(1f), MaticaButtonVariant.NEUTRAL)
-                MaticaButton("Logros", { navigator.go(MaticaRoute.Rewards) }, Modifier.weight(1f), MaticaButtonVariant.NEUTRAL)
-                MaticaButton("Ajustes", { navigator.go(MaticaRoute.Settings) }, Modifier.weight(1f), MaticaButtonVariant.NEUTRAL)
+            // Cuatro accesos en dos filas de dos. «Mi perfil» no tenía ninguna entrada en la app: la
+            // pantalla existía y se probaba montándola por ruta, pero ningún botón llevaba a ella, así
+            // que el reinicio del perfil local era inalcanzable. En tres por fila «Mi perfil» ya no
+            // cabía (114 dp por celda contra ~118 de la etiqueta), de ahí el 2×2.
+            listOf(
+                MaticaRoute.ReviewQueue to "Repasos",
+                MaticaRoute.Rewards to "Logros",
+                MaticaRoute.Settings to "Ajustes",
+                MaticaRoute.Profile to "Mi perfil",
+            ).chunked(2).forEach { pareja ->
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.sm),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    pareja.forEach { (destino, etiqueta) ->
+                        MaticaButton(etiqueta, { navigator.go(destino) }, Modifier.weight(1f), MaticaButtonVariant.NEUTRAL)
+                    }
+                }
             }
         }
     }
@@ -408,7 +428,16 @@ fun ReviewQueueScreen(session: MaticaSession, navigator: MaticaNavigator) {
 
 @Composable
 fun RewardsScreen(session: MaticaSession, navigator: MaticaNavigator) {
-    MaticaScreen(title = "Logros", session = session, onBack = { navigator.goBack() }, subtitle = "Se gana practicando") {
+    // showChips = false: la propia pantalla abre con su fila de tres insignias (XP, racha, gemas).
+    // Dejar además las dos de la cabecera duplicaba «0 XP» y «0 días» a 40 px de distancia, como
+    // salió en la captura de Logros.
+    MaticaScreen(
+        title = "Logros",
+        session = session,
+        onBack = { navigator.goBack() },
+        subtitle = "Se gana practicando",
+        showChips = false,
+    ) {
         Row(horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.sm)) {
             MaticaCountChip(session.xp, "XP", MaticaIcon.XP, MaticaChipPalette.xp, Modifier.weight(1f))
             MaticaCountChip(session.streak, "días", MaticaIcon.FLAME, MaticaChipPalette.streak, Modifier.weight(1f))
@@ -522,14 +551,23 @@ fun SettingsScreen(session: MaticaSession, navigator: MaticaNavigator) {
                 variant = MaticaButtonVariant.NEUTRAL,
                 fullWidth = true,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.sm)) {
-                listOf(0f, 0.5f, 1f, 1.5f).forEach { scale ->
-                    MaticaButton(
-                        label = scale.label(),
-                        onClick = { session.updateSettings { it.copy(motionScale = scale) } },
-                        modifier = Modifier.weight(1f),
-                        variant = if (settings.motionScale == scale) MaticaButtonVariant.PRIMARY else MaticaButtonVariant.NEUTRAL,
-                    )
+            // Cuatro etiquetas no caben en una línea siquiera con el ancho repartido: cada pastilla
+            // necesita ~103 dp (etiqueta + 24 de relleno por lado) y el teléfono de 392 dp deja ~90,
+            // así que «Rápida» se escribía una letra por renglón. En dos filas de dos cada botón
+            // recibe el doble de sitio y la etiqueta cabe entera.
+            listOf(0f to 0.5f, 1f to 1.5f).forEach { (primera, segunda) ->
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.sm),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    listOf(primera, segunda).forEach { scale ->
+                        MaticaButton(
+                            label = scale.label(),
+                            onClick = { session.updateSettings { it.copy(motionScale = scale) } },
+                            modifier = Modifier.weight(1f),
+                            variant = if (settings.motionScale == scale) MaticaButtonVariant.PRIMARY else MaticaButtonVariant.NEUTRAL,
+                        )
+                    }
                 }
             }
             MaticaCaption("«Ninguna» equivale a reducir el movimiento del sistema: las animaciones se apagan, el contenido no.")
@@ -543,11 +581,14 @@ fun SettingsScreen(session: MaticaSession, navigator: MaticaNavigator) {
             )
         }
         MaticaSection("Grado") {
+            // NEUTRAL y no TEXT: sin superficie las tres opciones se leían como etiquetas y sólo
+            // la elegada parecía un botón. No van en una fila de tres: «2.º de secundaria» necesita
+            // ~150 dp de etiqueta y el teléfono deja ~116 dp por celda, así que se partiría.
             listOf("1.º de secundaria", "2.º de secundaria", "3.º de secundaria").forEach { grade ->
                 MaticaButton(
                     label = grade,
                     onClick = { session.updateSettings { it.copy(grade = grade) } },
-                    variant = if (settings.grade == grade) MaticaButtonVariant.PRIMARY else MaticaButtonVariant.TEXT,
+                    variant = if (settings.grade == grade) MaticaButtonVariant.PRIMARY else MaticaButtonVariant.NEUTRAL,
                     fullWidth = true,
                 )
             }

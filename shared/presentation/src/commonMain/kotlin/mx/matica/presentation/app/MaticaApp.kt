@@ -17,9 +17,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -27,11 +30,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import mx.matica.design.motion.LocalMotionStyle
 import mx.matica.design.motion.MaticaMotion
 import mx.matica.design.motion.MotionStyle
 import mx.matica.design.theme.MaticaTheme
+import mx.matica.design.tokens.MaticaShapes
 import mx.matica.presentation.route.MaticaNavigator
 import mx.matica.presentation.route.MaticaRoute
 
@@ -140,7 +146,26 @@ private fun MaticaNavHost(session: MaticaSession, navigator: MaticaNavigator, re
                 modifier = Modifier.fillMaxSize(),
             ) { target ->
                 val route = target.route ?: return@AnimatedContent
-                MaticaRouteContent(route, session, navigator)
+                // Hoja anclada abajo y con superficie propia. Sin contenedor, la ruta modal se dibujaba
+                // transparente encima de la pantalla que la abrió: las dos cabeceras caían en la misma
+                // coordenada («Pistas» sobre el título del ejercicio) y el reproductor se leía a través
+                // de los huecos de las tarjetas, así lo mostró la captura del emulador. La franja de
+                // arriba sigue siendo scrim tocable.
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().fillMaxHeight(SHEET_HEIGHT),
+                        shape = RoundedCornerShape(
+                            topStart = MaticaShapes.large,
+                            topEnd = MaticaShapes.large,
+                            bottomStart = 0.dp,
+                            bottomEnd = 0.dp,
+                        ),
+                        color = MaterialTheme.colorScheme.surface,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                    ) {
+                        MaticaRouteContent(route, session, navigator)
+                    }
+                }
             }
         }
     }
@@ -176,6 +201,9 @@ private fun fadePair(style: MotionStyle): Pair<EnterTransition, ExitTransition> 
 }
 
 private const val SCRIM_ALPHA = 0.45f
+
+/** La hoja modal deja arriba la franja por la que se ve y se toca el scrim: 78 % del alto. */
+private const val SHEET_HEIGHT = 0.78f
 
 /** Lo que dice TalkBack al activar la capa oscura: sin etiqueta, el toque sería un misterio accesible. */
 private const val SCRIM_ON_CLICK_LABEL = "Cerrar las pistas"

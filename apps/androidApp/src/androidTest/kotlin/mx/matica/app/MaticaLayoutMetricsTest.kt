@@ -150,6 +150,35 @@ class MaticaLayoutMetricsTest {
         )
     }
 
+    /**
+     * La caminata visual por el emulador encontró «Rápida» escrita una letra por renglón: la fila de
+     * cuatro opciones no cabía y el `weight` del llamador se estaba ignorando en el botón. La medida
+     * que delata ese fallo es la altura del propio botón.
+     */
+    @Test
+    fun lasCuatroEtiquetasDeMovimientoCabenEnUnaLinea() {
+        rule.setContent {
+            MaticaApp(
+                session = MaticaSession(today = LocalDate(2026, 11, 5)),
+                navigator = MaticaNavigator(MaticaRoute.Settings),
+            )
+        }
+        rule.waitForIdle()
+
+        listOf("Ninguna", "Lenta", "Normal", "Rápida").forEach { etiqueta ->
+            val cuadro = rule.onNode(hasText(etiqueta) and hasClickAction())
+                .apply { performScrollTo() }
+                .fetchSemanticsNode()
+                .boundsInWindow
+            assertTrue(
+                cuadro.height <= dp(56f),
+                "«$etiqueta» mide ${px(cuadro.height)} de alto: una etiqueta de una sola línea no " +
+                    "necesita más que el botón de 48 dp, así que el texto se partió en renglones " +
+                    "porque la fila no le dejó ancho.",
+            )
+        }
+    }
+
     @Test
     fun laBarraDeProgresoSeAnunciaComoProporcion() {
         rule.setContent {
