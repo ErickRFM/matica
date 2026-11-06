@@ -10,6 +10,13 @@ kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
     }
+    // Reutiliza exactamente SkillId del motor; evita copiar el catálogo en otro archivo.
+    // El Docker de Ktor puede compilar esta fuente sin aplicar el plugin Android.
+    sourceSets {
+        main {
+            kotlin.srcDir(rootProject.file("shared/math-engine/src/commonMain/kotlin/mx/matica/math/skills"))
+        }
+    }
 }
 
 application {
@@ -17,7 +24,6 @@ application {
 }
 
 dependencies {
-    implementation(project(":shared:math-engine"))
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.netty)
     implementation(libs.ktor.server.content.negotiation)
