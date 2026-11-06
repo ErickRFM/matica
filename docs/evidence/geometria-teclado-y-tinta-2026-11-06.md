@@ -1,6 +1,8 @@
 # Evidencia — geometría, arrastre en el plano, teclado y tinta (2026-11-06)
 
-Rama `feat/bloque-3-geometria-y-teclado`, sobre `main` en `634d99c`.
+Rama `feat/bloque-3-geometria-y-teclado`, abierta sobre `main` en `634d99c` y **con `origin/main`
+integrado después** (`2f9fdee`, PR #9: temas sin grados escolares + conectividad Ktor). Las tandas se
+midieron dos veces: la primera contra la base y la definitiva contra el árbol integrado.
 Dispositivo: `companero_v12_qa_20261009(AVD) - 11` (`emulator-5554`, Android 11 / API 30, 1080×2340,
 densidad 440 → 392,72 dp de ancho en retrato). Tema claro.
 
