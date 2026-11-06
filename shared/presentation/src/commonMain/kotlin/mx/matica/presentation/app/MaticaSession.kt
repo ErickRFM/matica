@@ -35,7 +35,7 @@ import mx.matica.presentation.math.routeNodes
 /** Modo de color elegido por el estudiante; `SYSTEM` respeta el tema del dispositivo. */
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
-/** Ajustes persistentes del estudiante. La accesibilidad no es un adorno: controla el render. */
+/** Ajustes de sesión. La accesibilidad no es un adorno: controla el render. */
 data class MaticaSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val motionScale: Float? = null,

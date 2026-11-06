@@ -13,7 +13,7 @@ internal object MaticaBackendProbe {
     suspend fun isAvailable(baseUrl: String): Boolean = withContext(Dispatchers.IO) {
         if (!baseUrl.startsWith("https://")) return@withContext false
         val connection = try {
-            URL(baseUrl.trimEnd('/') + "/healthz").openConnection() as HttpURLConnection
+            URL(baseUrl.trimEnd('/') + "/readyz").openConnection() as HttpURLConnection
         } catch (_: Exception) {
             return@withContext false
         }

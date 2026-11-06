@@ -91,8 +91,8 @@ fun WelcomeScreen(session: MaticaSession, navigator: MaticaNavigator) {
             fullWidth = true,
         )
         MaticaCaption(
-            "Mática no pide datos de adultos ni muestra anuncios. El perfil vive en este dispositivo " +
-                "hasta que exista el servicio de cuentas.",
+            "Mática no muestra anuncios ni solicita datos personales innecesarios. " +
+                "El avance permanece en esta sesión mientras no exista sincronización.",
         )
     }
 }
@@ -303,8 +303,7 @@ fun LoginScreen(session: MaticaSession, navigator: MaticaNavigator) {
                 fullWidth = true,
             )
             MaticaCaption(
-                "Sin cuenta también hay ruta, repasos y logros: el perfil vive en este teléfono y " +
-                    "Mática no pide tu edad.",
+                "Puedes practicar sin cuenta. Por ahora el progreso sólo permanece durante la sesión.",
             )
 
             MaticaSection("Cuando exista la cuenta") {
