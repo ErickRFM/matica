@@ -1,0 +1,15 @@
+# Blueprint de la API de Mática: no aplicar hasta elegir explícitamente workspace y PostgreSQL.
+# Servicio simbólico existente matica-symbolic-staging NO se modifica.
+services:
+  - type: web
+    name: matica-api-staging
+    runtime: docker
+    repo: https://github.com/ErickRFM/matica
+    branch: main
+    dockerContext: .
+    dockerfilePath: ./backend/api/Dockerfile
+    plan: free
+    healthCheckPath: /healthz
+    envVars:
+      - key: DATABASE_URL
+        sync: false

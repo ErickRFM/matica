@@ -82,6 +82,9 @@ jobs:
       - name: Pruebas de rutas, sesión y renderizador (target Android, host)
         run: ./gradlew :shared:presentation:testAndroidHostTest --stacktrace
 
+      - name: Backend Ktor (pruebas sin credenciales ni PostgreSQL)
+        run: ./gradlew :backend:api:test --stacktrace
+
       - name: Compilar APK debug
         run: ./gradlew :apps:androidApp:assembleDebug --stacktrace
 
@@ -97,6 +100,7 @@ jobs:
             shared/exercises/build/reports/tests/
             shared/presentation/build/reports/tests/
             design-system/build/reports/tests/
+            backend/api/build/reports/tests/
           if-no-files-found: ignore
           retention-days: 14
 
