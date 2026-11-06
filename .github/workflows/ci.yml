@@ -85,6 +85,9 @@ jobs:
       - name: Pruebas de rutas, sesión y renderizador (target Android, host)
         run: ./gradlew :shared:presentation:testAndroidHostTest --stacktrace
 
+      - name: Compilar pruebas instrumentadas (sin ejecutar emulador)
+        run: ./gradlew :apps:androidApp:assembleDebugAndroidTest --stacktrace
+
       - name: Compilar APK debug
         run: ./gradlew :apps:androidApp:assembleDebug --stacktrace
 
