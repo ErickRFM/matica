@@ -1,10 +1,13 @@
 package mx.matica.design.motion
 
+import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.SpringSpec
 import androidx.compose.animation.core.TweenSpec
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.ui.unit.IntOffset
 
 /**
  * Tokens de movimiento. Las duraciones son múltiplos de 40 ms y los rebotes se quedan por debajo
@@ -50,7 +53,27 @@ object MaticaMotion {
         stiffness = Spring.StiffnessMediumLow * stiffnessFactor(style.scale),
     )
 
-    /** Refuerzo de acierto: rebote deliberado que se apaga cuando el sistema pide calma. */
+    /**
+     * Desplazamiento de entrada y salida. Con movimiento reducido el contenido NO viaja: `snap` lo
+     * deja en su posición de reposo. Un muelle con amortiguación 1 sigue siendo un muelle —tarda
+     * cientos de milisegundos en recorrer un tercio de la caja—, así que endurecer la amortiguación
+     * no cumplía lo que la escala 0 del sistema pide.
+     */
+    fun slideSpec(style: MotionStyle): FiniteAnimationSpec<IntOffset> =
+        if (style.reduced) {
+            snap()
+        } else {
+            spring(
+                dampingRatio = 0.86f,
+                stiffness = Spring.StiffnessMediumLow * stiffnessFactor(style.scale),
+            )
+        }
+
+    /**
+     * Refuerzo de pulsación: el único consumo que le queda después de sacar el rebote del contenido
+     * medible (marcador de la recta, barra de fracción y celdas del reparto), donde el sobretiro del
+     * 23 % pintaba valores que no existen. Se apaga cuando el sistema pide calma.
+     */
     fun <T> popSpec(style: MotionStyle): SpringSpec<T> = spring(
         dampingRatio = if (style.reduced) 1f else 0.42f,
         stiffness = Spring.StiffnessLow * stiffnessFactor(style.scale),

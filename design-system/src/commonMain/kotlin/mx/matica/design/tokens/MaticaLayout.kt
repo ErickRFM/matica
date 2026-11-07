@@ -26,4 +26,11 @@ object MaticaLayout {
      * píxel según la pantalla.
      */
     val glyphFrame = 24.dp
+
+    /**
+     * Ancho máximo de un mensaje que se sostiene solo sobre la pantalla: la confirmación destructiva
+     * y los estados de `MaticaStateView`. Es 420 dp y no 640 porque una frase de aviso leída a
+     * ancho completo deja de ser un aviso y se convierte en otro párrafo de la página.
+     */
+    val messageWidth = 420.dp
 }

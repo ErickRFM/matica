@@ -41,6 +41,8 @@ class ExprParserTest {
         assertEquals("2*3^2", ExprPrinter.render(parse("2 * 3^2")))
         assertEquals("2^3^2", ExprPrinter.render(parse("2^3^2")))
         assertEquals("x^2^3", ExprPrinter.render(parse("x^2^3")))
+        assertEquals("x^2", ExprPrinter.render(parse("x²")))
+        assertEquals("2x^2", ExprPrinter.render(parse("2x²")))
     }
 
     @Test

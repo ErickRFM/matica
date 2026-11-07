@@ -12,6 +12,7 @@ import mx.matica.learning.review.ReviewState
 import mx.matica.learning.skills.DefaultCurriculum
 import mx.matica.learning.skills.LearningPath
 import mx.matica.learning.skills.SkillGraph
+import mx.matica.learning.text.pluralEs
 import mx.matica.math.skills.SkillId
 
 data class SkillProgress(
@@ -117,13 +118,17 @@ class LearningEngine(private val graph: SkillGraph = DefaultCurriculum.graph) {
 
         val reason = when {
             reviewsDue.isNotEmpty() && nextSkills.isEmpty() ->
-                "Solo repasos: ${reviewsDue.size} habilidad(es) vencida(s) y ninguna nueva disponible."
+                "Solo repasos: ${reviewsDue.size} " +
+                    pluralEs(reviewsDue.size, "habilidad vencida", "habilidades vencidas") +
+                    " y ninguna nueva disponible."
 
             reviewsDue.isNotEmpty() ->
-                "Repasos primero (${reviewsDue.size}) y luego ${nextSkills.size} habilidad(es) nuevas."
+                "Repasos primero (${reviewsDue.size}) y luego ${nextSkills.size} " +
+                    pluralEs(nextSkills.size, "habilidad nueva", "habilidades nuevas") + "."
 
             nextSkills.isEmpty() -> "Sin trabajo nuevo: ninguna habilidad quedó disponible con el dominio actual."
-            else -> "${nextSkills.size} habilidad(es) nuevas disponibles."
+            else -> "${nextSkills.size} " +
+                pluralEs(nextSkills.size, "habilidad nueva disponible", "habilidades nuevas disponibles") + "."
         }
         return StudyPlan(reviewsDue, nextSkills, reason)
     }

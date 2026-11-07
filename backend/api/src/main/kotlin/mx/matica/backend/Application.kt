@@ -1,51 +1,42 @@
 package mx.matica.backend
 
-import io.ktor.http.HttpStatusCode
-import io.ktor.serialization.kotlinx.json.json
-import io.ktor.server.application.Application
-import io.ktor.server.application.install
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
-import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.server.response.respond
-import io.ktor.server.routing.get
-import io.ktor.server.routing.routing
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
-import mx.matica.math.skills.SkillId
-
-@Serializable
-data class ServiceStatus(val status: String, val service: String = "matica-api")
-
-@Serializable
-data class TopicItem(val id: String, val title: String)
-
-@Serializable
-data class TopicCatalog(val version: Int, val topics: List<TopicItem>)
-
-/** Punto de entrada de Render. Nunca requiere una clave para arrancar. */
-fun main() {
-    val port = System.getenv("PORT")?.toIntOrNull()?.takeIf { it in 1..65535 } ?: 10000
-    embeddedServer(Netty, port = port, host = "0.0.0.0", module = { maticaModule() }).start(wait = true)
-}
+import org.slf4j.LoggerFactory
 
 /**
- * API deliberadamente de sólo lectura hasta tener verificación de identidad y RLS/ACL.
- * Nunca se aceptan intentos o premios anónimos.
+ * Punto de entrada de Render.
+ *
+ * Arranca sin base ni secreto para que `/healthz` siempre responda, pero en cuanto encuentra
+ * `DATABASE_URL` aplica las migraciones antes de aceptar tráfico: nunca sirve con un esquema a
+ * medias. Un secreto JWT presente pero demasiado corto sí aborta el arranque: es una
+ * configuración insegura, no una función opcional.
  */
-fun Application.maticaModule(databaseReady: () -> Boolean = { PostgresProbe.ready(System.getenv("DATABASE_URL")) }) {
-    install(ContentNegotiation) {
-        json(Json { encodeDefaults = true; ignoreUnknownKeys = false })
+fun main() {
+    val logger = LoggerFactory.getLogger("mx.matica.backend")
+    val config = BackendConfig.fromEnvironment()
+    val database = config.databaseUrl?.let { Database.open(it) }
+    if (database != null && config.migrateOnStart) {
+        logger.info("Aplicando migraciones de PostgreSQL")
+        database.migrate()
     }
-    routing {
-        get("/healthz") { call.respond(ServiceStatus("ok")) }
-        get("/readyz") {
-            if (databaseReady()) call.respond(ServiceStatus("ready"))
-            else call.respond(HttpStatusCode.ServiceUnavailable, ServiceStatus("database_unavailable"))
-        }
-        get("/v1/topics") {
-            val topics = SkillId.entries.map { TopicItem(it.id, it.labelEs) }
-            call.respond(TopicCatalog(version = 1, topics = topics))
-        }
+    val services = MaticaServices.production(config, database)
+    if (!services.databaseAvailable) {
+        logger.warn("DATABASE_URL ausente: sólo salud y catálogo; cuentas e intentos responden 503")
     }
+    if (!services.authAvailable) {
+        logger.warn("MATICA_JWT_SECRET ausente: el registro y el login responden 503")
+    }
+    if (!services.symbolic.configured) {
+        logger.info("MATICA_SYMBOLIC_URL/KEY ausentes: /v1/symbolic responde 503")
+    }
+    if (!services.fcm.configured) {
+        logger.info("FCM sin cuenta de servicio: las notificaciones quedan apagadas")
+    }
+
+    Runtime.getRuntime().addShutdownHook(Thread { database?.close() })
+
+    val port = System.getenv("PORT")?.toIntOrNull()?.takeIf { it in 1..65535 } ?: 10000
+    embeddedServer(Netty, port = port, host = "0.0.0.0", module = { maticaModule(services) })
+        .start(wait = true)
 }

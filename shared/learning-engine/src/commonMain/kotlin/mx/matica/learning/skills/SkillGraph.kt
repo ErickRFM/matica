@@ -1,5 +1,6 @@
 package mx.matica.learning.skills
 
+import mx.matica.learning.text.pluralEs
 import mx.matica.math.skills.SkillId
 
 sealed interface GraphBuild {
@@ -73,7 +74,10 @@ class SkillGraph private constructor(val edges: Map<SkillId, Set<SkillId>>) {
             reason = if (missing.isEmpty()) {
                 "${target.labelEs} está disponible: ya domina sus prerrequisitos."
             } else {
-                "Para llegar a ${target.labelEs} faltan ${missing.size} prerrequisito(s): ${missing.joinToString { it.labelEs }}."
+                val faltan = pluralEs(missing.size, "falta", "faltan")
+                "Para llegar a ${target.labelEs} $faltan ${missing.size} " +
+                    pluralEs(missing.size, "prerrequisito", "prerrequisitos") +
+                    ": " + missing.joinToString { it.labelEs } + "."
             },
         )
     }

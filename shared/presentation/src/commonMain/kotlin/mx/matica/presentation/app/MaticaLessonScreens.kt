@@ -1,6 +1,15 @@
 package mx.matica.presentation.app
 
 import androidx.compose.foundation.layout.Arrangement
+import mx.matica.presentation.components.MaticaConfetti
+import androidx.compose.runtime.LaunchedEffect
+import mx.matica.design.feedback.rememberMaticaFeedback
+import mx.matica.design.brand.MascotEmotion
+import mx.matica.design.brand.MaticaMascot
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,12 +32,18 @@ import mx.matica.math.hints.HintLevel
 import mx.matica.math.numeric.Rational
 import mx.matica.math.skills.SkillId
 import mx.matica.math.verify.VerificationOutcome
+import mx.matica.presentation.components.MathKeyboardBar
+import mx.matica.presentation.components.appendMathSymbol
+import mx.matica.presentation.components.deleteLastMathSymbol
 import mx.matica.presentation.components.MaticaButton
 import mx.matica.presentation.components.MaticaButtonVariant
 import mx.matica.presentation.components.MaticaGlyph
 import mx.matica.presentation.components.MaticaIcon
 import mx.matica.presentation.components.MaticaIconButton
 import mx.matica.presentation.components.MaticaSection
+import mx.matica.presentation.components.StepChoiceCard
+import mx.matica.presentation.components.StepOption
+import mx.matica.presentation.exercise.buildStepOptions
 import mx.matica.presentation.exercise.ExerciseRenderPlan
 import mx.matica.presentation.exercise.ExerciseSlot
 import mx.matica.presentation.math.CartesianGraphView
@@ -73,7 +88,12 @@ fun LessonListScreen(skill: SkillId, session: MaticaSession, navigator: MaticaNa
                             icon = if (lesson.number == 1) MaticaIcon.LESSON else MaticaIcon.FORWARD,
                             tint = MaterialTheme.colorScheme.primary,
                         )
-                        Column(modifier = Modifier.weight(1f)) {
+                        // 4 dp entre nombre y cuenta: sin el hueco la pareja se lee como un solo
+                        // bloque (lo midió `lasFilasDeLeccionTienenRitmoYTargetTactil` en 0 dp).
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(MaticaSpacing.xs),
+                        ) {
                             Text(lesson.title, style = MaterialTheme.typography.titleMedium)
                             MaticaCaption(lesson.plan.equationText)
                         }
@@ -105,9 +125,22 @@ fun LessonPlayerScreen(skill: SkillId, lessonNumber: Int, session: MaticaSession
     }
 
     val plan = lesson.plan
+    val maticaFeedback = rememberMaticaFeedback()
     var workspace by rememberSaveable { mutableStateOf(plan.equationText) }
     var draft by rememberSaveable { mutableStateOf("") }
     var feedback by remember { mutableStateOf<Pair<String, String>?>(null) }
+    // El campo lleva el motivo corto y la tarjeta el veredicto entero; con el mismo texto en los dos
+    // la frase quedaba pegada debajo de sí misma (lo midió `elRechazoDelMotorSePintaUnaSolaVez…`).
+    var rejection by remember { mutableStateOf<String?>(null) }
+    var selectedOptionIndex by rememberSaveable(plan, workspace) { mutableStateOf<Int?>(null) }
+    var optionEvaluatedCorrect by remember { mutableStateOf<Boolean?>(null) }
+    val stepOptions = remember(plan, workspace) {
+        if (workspace == plan.equationText) {
+            plan.stepOptions.ifEmpty { buildStepOptions(plan) }
+        } else {
+            emptyList()
+        }
+    }
 
     MaticaScreen(
         title = lesson.title,
@@ -118,25 +151,113 @@ fun LessonPlayerScreen(skill: SkillId, lessonNumber: Int, session: MaticaSession
         MaticaCard {
             MaticaCaption("Lo que vas resolviendo")
             EquationView(text = workspace, variable = plan.variable)
+
+            if (stepOptions.isNotEmpty()) {
+                Text(
+                    text = "¿Cuál es el primer paso correcto?",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(MaticaSpacing.sm),
+                ) {
+                    stepOptions.forEachIndexed { index, option ->
+                        val isSelected = selectedOptionIndex == index
+                        val isCorrect = if (isSelected) optionEvaluatedCorrect else null
+                        StepChoiceCard(
+                            letter = option.letter,
+                            text = option.text,
+                            isSelected = isSelected,
+                            isCorrect = isCorrect,
+                            onClick = {
+                                selectedOptionIndex = index
+                                optionEvaluatedCorrect = null
+                                maticaFeedback.stepSelect()
+                                if (option.resultingExpression != null) {
+                                    draft = option.resultingExpression
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+
             MaticaCaption("Escribe la siguiente línea. El motor decide si es una consecuencia válida, no un botón de «siguiente».")
             MaticaField(
                 value = draft,
-                onValueChange = { draft = it },
+                onValueChange = {
+                    draft = it
+                    rejection = null
+                    if (selectedOptionIndex != null && stepOptions.getOrNull(selectedOptionIndex!!)?.resultingExpression != it) {
+                        selectedOptionIndex = null
+                        optionEvaluatedCorrect = null
+                    }
+                },
                 label = "Siguiente línea",
                 placeholder = plan.equationText,
-                error = feedback?.takeIf { it.first.contains("incorrecto") || it.first.contains("entiende") }?.second,
+                error = rejection,
+            )
+            MathKeyboardBar(
+                onInsert = { symbol ->
+                    draft = appendMathSymbol(draft, symbol)
+                    maticaFeedback.keyTap()
+                },
+                onDelete = {
+                    draft = deleteLastMathSymbol(draft)
+                    maticaFeedback.keyTap()
+                },
+                onClear = {
+                    draft = ""
+                    maticaFeedback.keyTap()
+                },
+                variable = plan.variable,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.sm)) {
                 MaticaButton(
-                    label = "Comprobar paso",
+                    label = if (stepOptions.isNotEmpty() && selectedOptionIndex != null) "Comprobar respuesta" else "Comprobar paso",
                     onClick = {
-                        if (draft.isBlank()) {
-                            feedback = "Falta la línea" to "Escribe la expresión a la que llegaste."
-                        } else {
-                            val verdict = session.submitStep(plan, workspace, draft)
+                        val chosenOption = selectedOptionIndex?.let { stepOptions.getOrNull(it) }
+                        val effectiveDraft = when {
+                            chosenOption?.resultingExpression != null -> chosenOption.resultingExpression
+                            draft.isNotBlank() -> draft.trim()
+                            else -> null
+                        }
+
+                        if (effectiveDraft == null && chosenOption == null) {
+                            feedback = "Falta la línea" to "Elige una opción o escribe la expresión a la que llegaste."
+                            rejection = null
+                        } else if (effectiveDraft != null) {
+                            val verdict = session.submitStep(plan, workspace, effectiveDraft)
                             val (title, detail) = verdictMessage(verdict)
                             feedback = title to detail
-                            if (verdict is mx.matica.math.analysis.StepVerdict.Valid) workspace = draft
+                            rejection = verdictReason(verdict)
+                            val isValid = verdict is mx.matica.math.analysis.StepVerdict.Valid
+                            if (isValid) {
+                                maticaFeedback.correct()
+                            } else {
+                                maticaFeedback.incorrect()
+                            }
+                            if (chosenOption != null) {
+                                optionEvaluatedCorrect = isValid
+                            }
+                            if (isValid) {
+                                workspace = effectiveDraft
+                                draft = ""
+                                selectedOptionIndex = null
+                                optionEvaluatedCorrect = null
+                            }
+                        } else if (chosenOption != null) {
+                            rejection = null
+                            if (chosenOption.isCorrect) {
+                                optionEvaluatedCorrect = true
+                                maticaFeedback.correct()
+                                feedback = "¡Paso correcto!" to "Excelente primer paso: ${chosenOption.text}."
+                            } else {
+                                optionEvaluatedCorrect = false
+                                maticaFeedback.incorrect()
+                                feedback = "Paso incorrecto" to "Ese no es el primer paso adecuado para esta ecuación. Intenta con otra operación."
+                            }
                         }
                     },
                 )
@@ -157,7 +278,12 @@ fun LessonPlayerScreen(skill: SkillId, lessonNumber: Int, session: MaticaSession
             Text("Respuesta final", style = MaterialTheme.typography.titleMedium)
             AnswerRow(plan = plan, session = session) { outcome, proposal ->
                 feedback = answerMessage(outcome, proposal)
-                if (outcome is VerificationOutcome.Satisfies) navigator.go(MaticaRoute.LessonComplete(skill, lessonNumber))
+                if (outcome is VerificationOutcome.Satisfies) {
+                    maticaFeedback.correct()
+                    navigator.go(MaticaRoute.LessonComplete(skill, lessonNumber))
+                } else {
+                    maticaFeedback.incorrect()
+                }
             }
         }
 
@@ -184,6 +310,9 @@ fun LessonPlayerScreen(skill: SkillId, lessonNumber: Int, session: MaticaSession
                         workspace = plan.equationText
                         draft = ""
                         feedback = null
+                        rejection = null
+                        selectedOptionIndex = null
+                        optionEvaluatedCorrect = null
                     },
                     variant = MaticaButtonVariant.TEXT,
                     fullWidth = true,
@@ -362,15 +491,76 @@ fun AttemptReviewScreen(skill: SkillId, lessonNumber: Int, attemptNumber: Int, s
 
 @Composable
 fun LessonCompleteScreen(skill: SkillId, lessonNumber: Int, session: MaticaSession, navigator: MaticaNavigator) {
+    val maticaFeedback = rememberMaticaFeedback()
+    LaunchedEffect(Unit) {
+        maticaFeedback.victory()
+    }
     val recordings = session.masteryChanges.takeLast(3)
     MaticaScreen(
-        title = "Lección terminada",
-        subtitle = skill.labelEs,
+        title = "¡EXCELENTE!",
+        subtitle = "¡Lección completada!",
         session = session,
         showChips = false,
         onBack = { navigator.goBack() },
     ) {
         MaticaStateView(state = MaticaViewState.success(lessonNumber)) { number ->
+            // Hero Mascota de Celebración (Figma 1:148, 11:215) con ráfaga de confeti
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.TopCenter,
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = MaticaSpacing.xs),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(MaticaSpacing.sm),
+                ) {
+                    MaticaMascot(
+                        emotion = MascotEmotion.CELEBRATING,
+                        modifier = Modifier.size(130.dp),
+                    )
+                    Text(
+                        text = "¡Lección completada!",
+                        style = MaterialTheme.typography.headlineSmall,
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = "Cada problema resuelto refuerza tu intuición y dominio algebraico.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                MaticaConfetti(
+                    modifier = Modifier.matchParentSize(),
+                )
+            }
+
+            // Estadísticas Trío (Figma 1:154: XP, Precisión, Tiempo)
+            MaticaCard(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = MaticaSpacing.xs),
+                    horizontalArrangement = Arrangement.SpaceAround,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("⚡", style = MaterialTheme.typography.titleMedium)
+                        Text("+20 XP", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
+                        Text("Ganados", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("🎯", style = MaterialTheme.typography.titleMedium)
+                        Text("100%", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.secondary)
+                        Text("Precisión", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("⏱", style = MaterialTheme.typography.titleMedium)
+                        Text("02:15", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.tertiary)
+                        Text("Tiempo", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+
             MaticaCard {
                 MaticaGlyph(icon = MaticaIcon.CHECK, tint = MaterialTheme.colorScheme.primary)
                 Text("Ejercicio $number resuelto con verificación", style = MaterialTheme.typography.titleMedium)
@@ -385,10 +575,16 @@ fun LessonCompleteScreen(skill: SkillId, lessonNumber: Int, session: MaticaSessi
                 }
             }
             val nextNumber = number + 1
+            val hasNext = session.lessonsFor(skill).any { it.number == nextNumber }
             MaticaButton(
-                label = "Siguiente lección",
-                onClick = { navigator.replace(MaticaRoute.LessonPlayer(skill, nextNumber)) },
-                enabled = session.lessonsFor(skill).any { it.number == nextNumber },
+                label = if (hasNext) "Siguiente lección" else "Continuar mi aventura",
+                onClick = {
+                    if (hasNext) {
+                        navigator.replace(MaticaRoute.LessonPlayer(skill, nextNumber))
+                    } else {
+                        navigator.resetTo(MaticaRoute.Home)
+                    }
+                },
                 fullWidth = true,
             )
             MaticaButton(

@@ -5,6 +5,7 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.plus
 import mx.matica.learning.mastery.EvidenceQuality
 import mx.matica.learning.mastery.SkillEvidence
+import mx.matica.learning.text.pluralEs
 
 object ReviewLadder {
     /** Intervalos en días por etapa. Etapa 0 = repaso al día siguiente. */
@@ -71,7 +72,8 @@ object ReviewRules {
         val scheduledOn = day.plus(intervalDays.toInt(), DateTimeUnit.DAY)
         return ReviewDecision(
             state = ReviewState(stage, scheduledOn, day, evidence.quality),
-            reason = "$reason Próximo repaso: $scheduledOn (${intervalDays} día(s)).",
+            reason = "$reason Próximo repaso: $scheduledOn ($intervalDays " +
+                pluralEs(intervalDays.toInt(), "día", "días") + ").",
         )
     }
 

@@ -26,7 +26,15 @@ class MainActivity : ComponentActivity() {
         // viva y volver a mostrar un segundo de marca sería un peaje, no una bienvenida.
         val coldStart = savedInstanceState == null
         setContent {
-            val session = remember { MaticaSession(connectionProbe = { MaticaBackendProbe.isAvailable(BuildConfig.MATICA_API_BASE_URL) }) }
+            val session = remember {
+                val graph = MaticaGraph.from(this)
+                MaticaSession(
+                    connectionProbe = { MaticaBackendProbe.isAvailable(BuildConfig.MATICA_API_BASE_URL) },
+                    // Sin URL configurada no se entrega el portal: la app explica que esta
+                    // compilación no trae cuentas en vez de mostrar un formulario que fallaría.
+                    account = graph.account.takeIf { graph.accountAvailable },
+                )
+            }
             LaunchedEffect(session) { session.refreshConnection() }
             val navigator = rememberMaticaNavigator()
             // El botón físico deshace la pila propia; sólo al llegar a la raíz deja salir de la app.

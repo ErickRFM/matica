@@ -1,6 +1,5 @@
 package mx.matica.presentation.math
 
-import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,7 +11,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -25,8 +23,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ionspin.kotlin.bignum.integer.BigInteger
-import mx.matica.design.motion.LocalMotionStyle
-import mx.matica.design.motion.MaticaMotion
+import mx.matica.design.motion.rememberReveal
 import mx.matica.design.tokens.MaticaPalette
 import mx.matica.design.tokens.MaticaSpacing
 import mx.matica.math.numeric.Rational
@@ -105,13 +102,9 @@ fun FractionView(
     color: Color = MaterialTheme.colorScheme.onSurface,
 ) {
     val model = remember(value, asMixed) { fractionModel(value, asMixed) }
-    val motion = LocalMotionStyle.current
-    val sweep = remember { Animatable(if (motion.reduced) 1f else 0f) }
     // La barra se barre cuando cambia lo que se dibuja (el modelo, clave estructural), no en cada
     // recomposición: otra instancia del mismo `Rational` no debe reiniciar el trazo.
-    LaunchedEffect(model, motion.reduced) {
-        if (motion.reduced) sweep.snapTo(1f) else sweep.animateTo(1f, MaticaMotion.popSpec(motion))
-    }
+    val sweep = rememberReveal(model)
     Row(
         modifier = modifier.semantics { contentDescription = model.accessibleText },
         verticalAlignment = Alignment.CenterVertically,
@@ -201,18 +194,14 @@ fun FractionStrip(
     maxParts: Int = 12,
 ) {
     val cells = remember(value, maxParts) { stripCells(value, maxParts) }
-    val motion = LocalMotionStyle.current
     if (!cells.drawable) {
         FractionView(value = value, modifier = modifier, color = fillColor)
         return
     }
     val target = cells.filledParts.toFloat()
-    val progress = remember { Animatable(if (motion.reduced) target else 0f) }
     // La clave es el número de partes pintadas (valor derivado del modelo), no la instancia de
     // `value`: la barra avanza cuando cambia el reparto, no cuando la pantalla se recompone.
-    LaunchedEffect(target, motion.reduced) {
-        if (motion.reduced) progress.snapTo(target) else progress.animateTo(target, MaticaMotion.popSpec(motion))
-    }
+    val progress = rememberReveal(key = target, target = target)
     val negative = value.signum < 0
     Row(
         modifier = modifier

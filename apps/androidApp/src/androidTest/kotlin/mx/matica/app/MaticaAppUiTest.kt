@@ -27,6 +27,7 @@ import kotlin.math.roundToInt
 import kotlin.test.assertTrue
 import kotlinx.datetime.LocalDate
 import mx.matica.design.tokens.MaticaPalette
+import mx.matica.learning.text.pluralEs
 import mx.matica.math.skills.SkillId
 import mx.matica.presentation.app.MaticaApp
 import mx.matica.presentation.app.MaticaSession
@@ -172,9 +173,13 @@ class MaticaAppUiTest {
 
         // «Mi perfil» se probaba montando la ruta a mano, y así el test verde convivía con un destino
         // al que ningún botón llevaba. Aquí se recorre el camino del estudiante, no el del navegador.
-        rule.onNodeWithText("Mi perfil").performClick()
+        // Hay que desplazarse primero: «Accesos» cae bajo el pliegue y la sonda midió el nodo en
+        // Rect(0,0,0,0), así que el toque se emitía en el vacío y la ruta seguía en Home.
+        rule.onNodeWithText("Mi perfil").performScrollTo().performClick()
         rule.waitForIdle()
-        rule.onNodeWithText("Reiniciar el perfil local").assertIsDisplayed()
+        // El perfil creció con la fila de insignias: el botón ya no cabe en el primer cuadro, así que
+        // la prueba exige que se pueda alcanzar, no que nazca visible.
+        rule.onNodeWithText("Reiniciar el perfil local").performScrollTo().assertIsDisplayed()
         assertEquals(MaticaRoute.Profile, navigator.current)
     }
 
@@ -194,17 +199,44 @@ class MaticaAppUiTest {
         rule.setContent { MaticaApp(session = session, navigator = MaticaNavigator(MaticaRoute.Rewards)) }
         rule.waitForIdle()
 
-        // `onAllNodes` con el texto exacto: las marcas del apartado de abajo también llevan «XP»
-        // («Primer bloque de práctica · 60 XP»), así que buscar la subcadena contaría tres y la
-        // duplicación de la cabecera quedaría tapada por el propio listado.
-        listOf("${session.xp} XP", "${session.streak} días").forEach { etiqueta ->
-            val veces = rule.onAllNodes(hasText(etiqueta)).fetchSemanticsNodes().size
+        // Los chips exponen su valor en `contentDescription` y no en `Text` (el número que se pinta
+        // es el interpolado de la animación); buscar texto exacto contaría cero y la prueba pasaría
+        // por el motivo equivocado.
+        val etiquetaRacha = "${session.streak} ${pluralEs(session.streak, "día", "días")}"
+        listOf("${session.xp} XP", etiquetaRacha).forEach { etiqueta ->
+            val veces = rule.onAllNodes(hasContentDescription(etiqueta)).fetchSemanticsNodes().size
             assertTrue(
                 veces == 1,
                 "«$etiqueta» aparece $veces veces en Logros: la pantalla pinta su propia fila de insignias " +
                     "encima de la de la cabecera y el estudiante ve el mismo contador dos veces a 40 px.",
             )
         }
+    }
+
+    /**
+     * La insignia de la racha se escribió siempre en plural: con un día de racha la pantalla de Hoy
+     * mostraba «1 días», y el estudiante leía un fallo del motor donde sólo había una etiqueta.
+     */
+    @Test
+    fun laRachaConcuerdaConElNumeroQueMuestra() {
+        val session = session()
+        rule.setContent { MaticaApp(session = session, navigator = MaticaNavigator(MaticaRoute.Home)) }
+        rule.waitForIdle()
+
+        // Cero días: la racha todavía no tiene evidencia y el sustantivo va en plural. El chip lo
+        // publica en `contentDescription`, no como texto: el número pintado es el de la animación.
+        rule.onNode(hasContentDescription("0 días")).assertIsDisplayed()
+        rule.onAllNodes(hasContentDescription("0 día")).assertCountEquals(0)
+
+        // Un día de verdad: verificar la solución registra evidencia fechada hoy y la racha sube a 1.
+        // No se escribe `session.streak = 1` porque el setter es privado a propósito: la racha sólo
+        // crece con práctica, así que la prueba tiene que practicar.
+        val plan = requireNotNull(session.startPractice("two-step-linear", 1L))
+        session.checkAnswer(plan, requireNotNull(session.solutionOf(plan)))
+        rule.waitForIdle()
+
+        rule.onNode(hasContentDescription("1 día")).assertIsDisplayed()
+        rule.onAllNodes(hasContentDescription("1 días")).assertCountEquals(0)
     }
 
     @Test
@@ -239,7 +271,9 @@ class MaticaAppUiTest {
         rule.onNodeWithText("Verificar por sustitución").performClick()
         rule.waitForIdle()
 
-        rule.onNodeWithText("Lección terminada").assertIsDisplayed()
+        // El cierre de lección lo titula la cabecera; «¡Lección completada!» se pinta dos veces
+        // (subtítulo y cuerpo), así que se ancla al título, que aparece una sola vez.
+        rule.onNodeWithText("¡EXCELENTE!").assertIsDisplayed()
         assertTrue(session.xp > 0, "Cerrar la lección sin XP dejaría la recompensa desconectada de la evidencia.")
     }
 
@@ -267,35 +301,40 @@ class MaticaAppUiTest {
     }
 
     /**
-     * El formulario de un servicio bloqueado tiene que verse aunque el estado diga que no hay datos:
-     * anidado dentro del `content` de `MaticaStateView` sólo se compone en Success, y las dos pantallas
-     * bloqueadas quedaban con el campo invisible (así lo cazó la instrumentación al navegar hasta
-     * «Correo electrónico»).
+     * Sin servidor, ni el login ni el aula dibujan un formulario muerto: dicen en voz alta por qué no
+     * pueden trabajar y ofrecen la salida que sí existe. Los dos campos del login desaparecían antes
+     * dentro del `content` de `MaticaStateView` (sólo se compone en Success); ahora no se dibujan a
+     * propósito y la prueba lo fija para que nadie los devuelva desactivados sin darse cuenta.
      */
     @Test
-    fun losServiciosBloqueadosMuestranSuFormularioDesactivado() {
+    fun losServiciosBloqueadosDicenQueFaltaUnaCuenta() {
+        val session = session()
         var route by mutableStateOf<MaticaRoute>(MaticaRoute.Login)
-        rule.setContent { MaticaApp(session = session(), navigator = MaticaNavigator(route)) }
+        rule.setContent { MaticaApp(session = session, navigator = MaticaNavigator(route)) }
         rule.waitForIdle()
 
-        listOf(
-            Triple(MaticaRoute.Login, "Correo electrónico", "Desactivado hasta que exista el servicio."),
-            Triple(MaticaRoute.Classroom, "Código de invitación", "Desactivado: no hay servidor que lo valide."),
-        ).forEach { (destino, etiqueta, aviso) ->
-            rule.runOnIdle { route = destino }
-            rule.waitForIdle()
-            rule.onNodeWithText(etiqueta).assertIsDisplayed()
-            rule.onNodeWithText(aviso).assertIsDisplayed()
+        rule.onNodeWithText("Cuentas no disponibles en esta versión").assertIsDisplayed()
+        rule.onNodeWithText("Correo electrónico").assertDoesNotExist()
+        rule.onNodeWithText("Practicar sin cuenta").performScrollTo().assertIsDisplayed()
+
+        // El aula sí tiene red en esta prueba: el aviso tiene que ser que falta la cuenta, no la red.
+        rule.runOnIdle {
+            session.setConnection(true)
+            route = MaticaRoute.Classroom
         }
+        rule.waitForIdle()
+        rule.onNodeWithText("El aula necesita una cuenta").assertIsDisplayed()
+        rule.onNodeWithText("Código de invitación").assertDoesNotExist()
+        rule.onNodeWithText("Entrar a mi cuenta").performScrollTo().assertIsDisplayed()
     }
 
     /**
-     * El login no puede parecer un formulario roto: la pantalla tiene que decir en voz alta que las
-     * cuentas aún no existen y que los dos campos están desactivados a propósito. El encabezado es
-     * semántico porque es el título real de la pantalla, no un texto grande cualquiera.
+     * El login no puede parecer un formulario roto: cuando la compilación no trae dirección de
+     * servidor, la pantalla lo declara y deja seguir sin cuenta. El encabezado es semántico porque es
+     * el título real de la pantalla, no un texto grande cualquiera.
      */
     @Test
-    fun elLoginExplicaQueLasCuentasEstanEnPreparacion() {
+    fun elLoginDeclaraQueEstaCompilacionNoTieneCuentas() {
         rule.setContent { MaticaApp(session = session(), navigator = MaticaNavigator(MaticaRoute.Login)) }
         rule.waitForIdle()
 
@@ -303,13 +342,12 @@ class MaticaAppUiTest {
             hasText("Entra a tu cuenta") and
                 SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading),
         ).assertIsDisplayed()
-        rule.onNodeWithText("Cuentas en preparación").assertIsDisplayed()
-        rule.onNodeWithText("Correo electrónico").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("Contraseña").performScrollTo().assertIsDisplayed()
-        // Las etiquetas son nodos de texto sueltos; el estado desactivado vive en los dos campos.
-        rule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.Disabled)).assertCountEquals(2)
-        rule.onNodeWithText("Desactivado hasta que exista el servicio.").assertIsDisplayed()
-        rule.onNodeWithText("Seguir con perfil local").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Cuentas no disponibles en esta versión").assertIsDisplayed()
+        rule.onNodeWithText("La práctica local funciona completa", substring = true)
+            .performScrollTo()
+            .assertIsDisplayed()
+        rule.onNodeWithText("Contraseña").assertDoesNotExist()
+        rule.onNodeWithText("Practicar sin cuenta").performScrollTo().assertIsDisplayed()
     }
 
     private fun cornerPixel(): Int =

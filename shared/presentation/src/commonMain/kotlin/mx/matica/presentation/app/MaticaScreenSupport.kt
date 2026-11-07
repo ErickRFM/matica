@@ -53,13 +53,17 @@ fun seriesOf(
     return plotSeries(points, xFrom, xTo, yFrom, yTo)
 }
 
-/** Ventana del plano: la solución centrada y las dos rectas evaluadas en ella. */
+/**
+ * Ventana del plano: en x, exactamente el intervalo que ya muestra la recta del ejercicio, para que
+ * el mismo valor caiga en el mismo sitio horizontal de las dos superficies. Cada una tenía su propio
+ * `±4` escrito a mano y cambiar uno bastaba para que recta y plano enseñaran el mismo punto en
+ * escalas distintas. En y manda el recorrido de las rectas trazadas.
+ */
 data class GraphWindow(val xFrom: Rational, val xTo: Rational, val yFrom: Rational, val yTo: Rational)
 
 fun graphWindow(plan: ExerciseRenderPlan): GraphWindow {
-    val span = Rational.fromLong(4L)
-    val xFrom = plan.solution - span
-    val xTo = plan.solution + span
+    val xFrom = plan.numberLine.from
+    val xTo = plan.numberLine.to
     val ys = plan.lines.flatMap { line -> listOf(line.slope * xFrom + line.intercept, line.slope * xTo + line.intercept) }
     val lowest = ys.minOrNull() ?: Rational.ZERO
     val highest = ys.maxOrNull() ?: Rational.ONE
@@ -73,6 +77,18 @@ fun verdictMessage(verdict: StepVerdict): Pair<String, String> = when (verdict) 
     is StepVerdict.Invalid -> "Paso incorrecto" to "${verdict.error.labelEs}. ${verdict.detail} ${verdict.repairHint}"
     is StepVerdict.Indeterminate -> "No se puede decidir" to verdict.reason
     is StepVerdict.SyntaxProblem -> "No se entiende la escritura" to "${verdict.reason} en la posición ${verdict.position}. ${verdict.suggestion}"
+}
+
+/**
+ * Motivo corto del rechazo, para el campo donde se escribió la línea. La tarjeta de veredicto ya
+ * muestra el detalle completo; repetir los dos en la misma pantalla deja la misma frase pegada una
+ * debajo de la otra (así lo midió la sonda del 2026-11-06 en el reproductor). `null` cuando no hay
+ * rechazo que señalar junto al campo.
+ */
+fun verdictReason(verdict: StepVerdict): String? = when (verdict) {
+    is StepVerdict.Invalid -> verdict.error.labelEs
+    is StepVerdict.SyntaxProblem -> verdict.reason
+    else -> null
 }
 
 fun errorSkillsOf(verdict: StepVerdict): Set<StepError> = when (verdict) {

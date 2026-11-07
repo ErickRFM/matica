@@ -41,7 +41,7 @@ import mx.matica.math.ast.Expr
 import mx.matica.math.numeric.Rational
 import mx.matica.presentation.components.MaticaIcon
 import mx.matica.presentation.components.MaticaIconButton
-import kotlin.math.abs
+import kotlinx.coroutines.launch
 
 /** De qué habla la figura: el total es la suma de los cuatro lados o el recubrimiento del rectángulo. */
 enum class FigureMeasure { PERIMETER, AREA }
@@ -164,15 +164,8 @@ fun figureCandidates(numberLine: NumberLineModel): List<Rational> =
  * Sin candidatos no hay lectura que dar.
  */
 fun figureValueAt(fraction: Float, candidates: List<Rational>): Rational? {
-    if (candidates.isEmpty()) return null
-    val clamped = fraction.coerceIn(0f, 1f)
-    return candidates.minByOrNull { abs(it.approximate() - spanValue(clamped, candidates)) }
-}
-
-private fun spanValue(fraction: Float, candidates: List<Rational>): Double {
-    val first = candidates.first().approximate()
-    val last = candidates.last().approximate()
-    return first + (last - first) * fraction
+    val first = candidates.firstOrNull() ?: return null
+    return nearestCandidateAt(fraction, from = first, to = candidates.last(), candidates = candidates)
 }
 
 /**
@@ -216,13 +209,21 @@ fun RectangleFigureView(
     val widthPx = unit * widthUnits.approximate().toFloat()
     val heightPx = unit * heightUnits.approximate().toFloat()
     val target = if (canvasSize.width > 0 && canvasSize.height > 0) widthPx to heightPx else null
-    val drawn = remember { Animatable(target?.first ?: 0f) }
+    val drawn = remember { Animatable(0f) }
+    val drawnHeight = remember { Animatable(0f) }
     LaunchedEffect(target, motion.reduced) {
         val size = target ?: return@LaunchedEffect
         if (motion.reduced) {
             drawn.snapTo(size.first)
+            drawnHeight.snapTo(size.second)
         } else {
-            drawn.animateTo(size.first, MaticaMotion.popSpec(motion))
+            // Los dos lados crecen juntos: animar sólo el ancho hacía que el primer fotograma de la
+            // carta mostrara una línea vertical de alto completo y ancho cero, y el rectángulo
+            // llegara después. `contentSpec` y no `popSpec`: el rebote del pop se sale del marco de
+            // 148 dp (0.42 de amortiguación sobre el 0.86 de holgura) y acá se está apareciendo
+            // dibujo, no celebrando un acierto.
+            launch { drawn.animateTo(size.first, MaticaMotion.contentSpec(motion)) }
+            launch { drawnHeight.animateTo(size.second, MaticaMotion.contentSpec(motion)) }
         }
     }
     val matches = figure.totalAt(hypothesis) == figure.total
@@ -250,19 +251,24 @@ fun RectangleFigureView(
                 .padding(horizontal = MaticaSpacing.md),
             contentAlignment = Alignment.Center,
         ) {
-            Canvas(modifier = Modifier.fillMaxSize()) {
+            Canvas(modifier = Modifier.fillMaxSize().onSizeChanged { canvasSize = it }) {
+                val heightShown = drawnHeight.value
                 val left = (size.width - drawn.value) / 2f
-                val top = (size.height - heightPx) / 2f
+                val top = (size.height - heightShown) / 2f
                 val sideStroke = 3.dp.toPx()
+                // Relleno con el primario traslúcido y contorno con `outline`, no `surfaceVariant`:
+                // la figura vive dentro de una `MaticaCard` cuyo contenedor ES `surfaceVariant`, así
+                // que el relleno original pintaba del color exacto de su propio fondo y el cuerpo del
+                // rectángulo desaparecía. Medido: la región era 99.45 % de un solo color.
                 drawRect(
-                    color = scheme.surfaceVariant,
+                    color = scheme.primary.copy(alpha = 0.16f),
                     topLeft = Offset(left, top),
-                    size = Size(drawn.value, heightPx),
+                    size = Size(drawn.value, heightShown),
                 )
                 drawRect(
-                    color = scheme.outlineVariant,
+                    color = scheme.outline,
                     topLeft = Offset(left, top),
-                    size = Size(drawn.value, heightPx),
+                    size = Size(drawn.value, heightShown),
                     style = Stroke(width = sideStroke),
                 )
                 // El lado que se mueve es el izquierdo, pintado con el color primario y más grueso
@@ -270,21 +276,21 @@ fun RectangleFigureView(
                 drawLine(
                     color = scheme.primary,
                     start = Offset(left, top),
-                    end = Offset(left, top + heightPx),
+                    end = Offset(left, top + heightShown),
                     strokeWidth = 5.dp.toPx(),
                     cap = StrokeCap.Round,
                 )
                 drawLine(
                     color = scheme.primary,
                     start = Offset(left + drawn.value, top),
-                    end = Offset(left + drawn.value, top + heightPx),
+                    end = Offset(left + drawn.value, top + heightShown),
                     strokeWidth = sideStroke,
                     pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 8f)),
                 )
                 drawCircle(
                     color = scheme.primary,
                     radius = 9.dp.toPx(),
-                    center = Offset(left, top + heightPx),
+                    center = Offset(left, top + heightShown),
                 )
             }
         }

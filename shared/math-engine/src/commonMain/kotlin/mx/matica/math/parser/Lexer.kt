@@ -42,6 +42,12 @@ internal object Lexer {
                     tokens += Token(TokenKind.IDENT, input.substring(start, index), start)
                 }
 
+                char == '²' -> {
+                    tokens += Token(TokenKind.CARET, "^", index)
+                    tokens += Token(TokenKind.NUMBER, "2", index)
+                    index++
+                }
+
                 else -> {
                     val kind = when (char) {
                         '+' -> TokenKind.PLUS

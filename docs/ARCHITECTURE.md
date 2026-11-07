@@ -20,15 +20,18 @@ Orden de prioridad fijado por el prompt maestro, y usado para resolver conflicto
 | `:design-system` | KMP (`jvm` + `android`) con Compose | Paleta cruda, contraste WCAG 2.2 medible, escala tipográfica, espaciado de 4 dp, radios y los dos `ColorScheme` + colores semánticos. No conoce pantallas ni dominio. |
 | `:shared:presentation` | KMP (`jvm` + `android`) con Compose | Las 18 rutas y sus pantallas, el navegador con pila serializable, el estado vivo de la sesión (`MaticaSession`), el renderizador de ejercicios y los componentes matemáticos interactivos. Consume las fachadas; **no decide matemática ni dominio**. |
 | `tools/symbolic-service` | Python + FastAPI + SymPy | Servicio auxiliar aislado. Solo calcula lo que Kotlin no demuestra offline, sobre un AST tipado; nunca recibe texto del estudiante. |
+| `:backend:api` | Ktor + PostgreSQL (JDBC) | Cuentas propias (Argon2id + JWT), intentos idempotentes, aula con códigos de invitación, tokens de dispositivo y proxy SymPy. Migraciones Flyway al arrancar. Sólo se compila con `-Pmatica.backendOnly=true`. |
 
-Previsto y todavía **no creado** (se crea con código funcional, nunca vacío): `shared/core/{common,models,networking,database}`, `shared/gamification`, `shared/sync`, `features/{onboarding,authentication,home,learning-path,lessons,practice,rewards,profile,classrooms}`, `backend/api`.
+`apps/androidApp` aporta además la capa de datos del teléfono: cliente Ktor, token en preferencias privadas, cola SQLDelight y `SyncWorker` sobre WorkManager.
+
+Previsto y todavía **no creado** (se crea con código funcional, nunca vacío): `shared/core/{common,models,networking,database}`, `shared/gamification`, `shared/sync`, `features/{onboarding,authentication,home,learning-path,lessons,practice,rewards,profile,classrooms}`. La cola y el cliente viven hoy dentro de `:apps:androidApp`; extraerlos a `shared/*` es mecánico cuando exista un segundo cliente.
 
 ## Desviación documentada: una sola capa de presentación
 
 El plano inicial repartía la UI en `features/*` (una pantalla por módulo) sobre `androidx.navigation`. En la práctica se ha agrupado todo en `:shared:presentation` con una pila propia (`MaticaNavigator` + `MaticaRoute`), y la decisión tiene un motivo verificable:
 
 - **Navegación demostrable sin dispositivo.** `androidx.navigation` sólo existe en Android, así que «back desde la hoja de pistas regresa al reproductor» o «la pila sobrevive a la muerte del proceso» no podían entrar en `commonTest`. Con la pila serializada a `List<String>` las 18 rutas y sus transiciones se prueban en JVM y en el host Android.
-- **El mismo estado corre en prueba y en producción.** `MaticaSession` es una clase con `mutableStateOf`, no un `ViewModel`: las pruebas invocan exactamente las mismas funciones que los botones de las pantallas, así que una prueba verde significa que el botón hace algo. El plan original (`StateFlow` de ViewModel + intentos) sigue en pie para el Bloque 4 cuando haya backend; mientras no exista servidor, un ViewModel con repositorio falso sería decorado.
+- **El mismo estado corre en prueba y en producción.** `MaticaSession` es una clase con `mutableStateOf`, no un `ViewModel`: las pruebas invocan exactamente las mismas funciones que los botones de las pantallas, así que una prueba verde significa que el botón hace algo. El plan original (`StateFlow` de ViewModel + intentos) no se ha adoptado: con backend ya presente, la sesión sigue siendo la unidad de estado y un ViewModel sólo añadiría una capa que hoy no resuelve ningún caso real. Se replanteará cuando exista descarga de contenido con caché y varias fuentes de datos que coordinar.
 - **Coste real.** `androidx.navigation.compose` y Koin siguen declarados en `:apps:androidApp` para el deep-link y el wiring futuro; `MainActivity` sólo monta el host, el `BackHandler` y nada de lógica.
 
 Cuando aparezca código que justifique separar módulos (equpos distintos, compilación incremental cara), la división es mecánica: cada carpeta de `presentation/app` ya es un `feature` candidato.
@@ -38,27 +41,41 @@ Cuando aparezca código que justifique separar módulos (equpos distintos, compi
 
 1. `features/*` → `shared/presentation` → `shared/*` (dominio) → nada de Android.
 2. Un módulo de dominio **no** importa `android.*` ni Compose. Esto es lo que hace posible iOS sin reescribir lógica; hoy se garantiza con `jvmTest` puros en el motor.
-3. Las UI solo consumen `StateFlow` de ViewModel + intentos; no acceden a repositorios directamente.
+3. Las pantallas sólo hablan con `MaticaSession` (estado + acciones) y con la fachada
+   `MaticaAccountGateway`; la implementación Android (Ktor, SQLite, WorkManager) se inyecta desde
+   `MainActivity` y nunca se importa desde `commonMain`.
 4. El backend es la única fuente de verdad de progreso, recompensas y dominio verificado. El cliente puede mostrar estados optimistas, pero se reconcilian.
 5. `:shared:learning-engine` depende solo de `:shared:math-engine` y de `kotlinx-datetime`; `:shared:exercises` solo de `:shared:math-engine`. Ninguno ve Ktor ni `android.*`: deciden con veredictos ya demostrados, fechas y AST propios, no con cálculos inventados.
 6. La última palabra matemática siempre la tiene `MathEngine`: ni el generador de ejercicios ni el motor de aprendizaje definen si una igualdad es correcta. Ambos fallan y reportan el motivo cuando el motor no coincide.
 
 ## Modelo de datos y persistencia
 
-- **PostgreSQL (Supabase)**: fuente de verdad. Migraciones versionadas en `backend/` (SQL ordenado, irreversible por convención, aplicadas explícitamente).
-- **SQLDelight + SQLite** en el dispositivo: contenido descargado, intentos locales, cola de operaciones pendientes y horarios de repaso.
-- La cola de sincronización guarda `operationId` único (UUID) por intento para que un reintento no duplique `attempts` en el servidor.
-- Clave de aislamiento local: toda tabla local incluye `accountId`; cambiar de sesión no mezcla datos.
+- **PostgreSQL propio en Render**: fuente de verdad de cuentas, intentos y grupos. No se usa
+  Supabase ni claves `anon`/`service_role`: la identidad la emite el backend y la base sólo acepta
+  conexiones desde el servicio, así que el aislamiento es por `user_id` en cada consulta y no por
+  políticas de fila de un tercero.
+- **Migraciones Flyway** en `backend/api/src/main/resources/db/migration`, aplicadas al arrancar
+  (`MATICA_MIGRATE_ON_START=false` sólo para una emergencia). Son SQL ordenado y aditivo.
+- **SQLDelight + SQLite** en el dispositivo: cola de intentos pendientes (`pending_attempts`).
+  El currículo sigue empaquetado en la app; no hay descarga de contenido todavía.
+- La cola guarda el `id` UUID que genera el dominio antes de escribir: el servidor deduplica por ese
+  id (`ON CONFLICT DO NOTHING`), así que reintentar nunca duplica evidencia.
+- Clave de aislamiento local: la cola lleva `user_id`; cambiar de cuenta no mezcla ni atribuye
+  intentos de otra persona.
 
 ## Sincronización offline
 
-Ciclo explícito, sin magia:
+Ciclo explícito, implementado en esta tanda:
 
-1. La lección escribe el intento en SQLite (estado `PENDING`) antes de mostrar retroalimentación.
-2. `WorkManager` (Android) drena la cola cuando hay red; el orden es por `submittedAt`.
-3. El servidor valida el intento (motor propio en Ktor), calcula XP/dominio y responde la versión autoritativa.
-4. El cliente aplica la respuesta y marca `SYNCED`; si falla, conserva `PENDING` con contador de intentos y backoff.
-5. Conflicto de racha/XP: gana el cálculo del servidor; el cliente sólo muestra.
+1. Con sesión, el paso se escribe en `pending_attempts` **antes** de continuar; sin cuenta no hay
+   cola y el progreso vive sólo en el teléfono.
+2. `WorkManager` drena la cola cuando hay red (`SyncWorker`, lotes de 25, orden de llegada).
+3. El servidor valida formato, habilidad, veredicto y fecha, y guarda el intento por su UUID:
+   201 creado, 200 duplicado.
+4. 2xx o 4xx permanente (dato inválido, id ajeno) borran la fila; 5xx o red dejan la fila y piden
+   `retry` con retroceso exponencial; 401 cierra la sesión y conserva la cola para el próximo login.
+5. XP, racha y dominio se siguen calculando en el teléfono: el servidor todavía **no** calcula ni
+   devuelve la versión autoritativa, y por eso no se presenta como tal.
 
 Una lección interrumpida por cierre de app se reanuda desde el último intento persistido.
 
@@ -169,12 +186,13 @@ las de marca, arranque y login están en `docs/evidence/splash-login-2026-11-06.
   sucia. Un único `Animatable` alimenta trazo, mota, rótulo y barra (`splashPhases`), lo que evita
   relojes paralelos al cambiar la escala de movimiento; `rememberSaveable` guarda que ya terminó, no
   que empezó, así que rotar o cambiar de tema no lo repite.
-- **El login declara el bloqueo en vez de esconderlo.** La pantalla no puede parecer un formulario
-  roto: cabecera con atrás y píldora «Cuentas en preparación», los dos campos desactivados con su
-  motivo por campo y un CTA que sí funciona («Seguir con perfil local»). El título es `heading`, y
-  `elLoginExplicaQueLasCuentasEstanEnPreparacion` fija el encabezado semántico, la píldora, los dos
-  campos desactivados y el aviso; `MaticaSplashUiTest` fija que el splash anuncie progreso y termine
-  sin entrada del usuario.
+- **El login tiene dos cuerpos según el APK traiga servidor.** Con `MATICA_API_BASE_URL` la pantalla es
+  un formulario real (correo, contraseña, alta de cuenta) y la píldora de estado dice si hay sesión; sin
+  URL la app lo declara («Cuentas no disponibles en esta versión») y ofrece «Practicar sin cuenta» en
+  lugar de dibujar dos campos muertos. El título es `heading`, `elLoginDeclaraQueEstaCompilacionNoTieneCuentas`
+  fija el encabezado semántico, la declaración y la ausencia de campos, y `MaticaSplashUiTest` fija que
+  el splash anuncie progreso y termine sin entrada del usuario. El aula aplica la misma regla: sin
+  sesión dice si falta red o falta cuenta, y nunca muestra un código que nadie va a validar.
 
 ## Motor de aprendizaje (Bloque 2)
 
@@ -236,7 +254,7 @@ AST tipado, y después el motor la comprueba.
 - **Instrumentación Compose**: diez clases (`MaticaThemeRenderTest`, `MaticaAppUiTest`, `MaticaSplashUiTest`, `MaticaScreenInventoryTest`, `MaticaNavigatorRestoreTest`, `MaticaStateViewsTest`, `MaticaMotionTest`, `MaticaMathComponentsTest`, `MaticaWindowInsetsTest`, `MaticaLayoutMetricsTest`) con 45 casos ejecutados el 2026-11-06 sobre `companero_v12_qa_20261009(AVD) - 11` (`tests="45" failures="0" errors="0"`), incluidas las tres capturas con `captureToImage()` que comparan el píxel renderizado contra `colorScheme.surface` y `colorScheme.background`, las tres pruebas que leen `ViewCompat.getRootWindowInsets` de la ventana real, las cuatro que comparan rectángulos en píxeles contra los tokens de `MaticaLayout` y las tres nuevas de la tanda de marca (login declarado y splash montado). No entran en CI: el runner de GitHub no tiene dispositivo y un paso que no instala el APK de prueba devuelve `BUILD SUCCESSFUL` con `tests="0"`. Se ejecutan a mano y su evidencia se lee por XML de resultados, nunca por el código de salida. Cinco lecciones de método quedaron fijadas aquí: **la rotación no puede probarse montando el contenido desde la prueba** (el `setContent` del test no forma parte del `savedInstanceState`; hay que recrear `MainActivity`, el host real que llama a `rememberMaticaNavigator`), **un `assertIsDisplayed` sobre un elemento con `contentDescription` combinada da falso negativo** (se consulta `substring` o se lee el nodo por su texto interno), **una ventana ancha no se simula con `width`/`requiredWidth` dentro de la ventana de un teléfono** (ambos se recortan contra el máximo heredado y `boundsInWindow` recorta además al área visible; la medida honesta es girar la actividad y verificar primero que el área de composición supera de verdad el tope), **para medir el rectángulo de un botón hay que pedir el nodo clicable** (`hasText(opción)` solo devuelve el nodo de texto, cuyo bounds no coincide con el del botón; la selección honesta es `hasText(opción) and hasClickAction()`) y **una aserción nueva no vale nada si pasa con el defecto puesto**: las seis pruebas de la caminata se corrieron con su fix revertido — la hoja transparente devolvió «El título «Pistas» arranca en y=185.0 dentro de una zona de 2063.0 px», la variante dentro de tarjeta devolvió `tests="9" failures="1"` y la pareja final (grado en `TEXT` + chips de la cabecera reactivos) devolvió `tests="11" failures="2"` con los píxeles y los contadores en el mensaje — y sólo se dio por buena una aserción después de verla fallar por el motivo escrito.
 - **Cómo entra un número escrito por el estudiante**: `parseNumber` (`shared/presentation/app/MaticaScreenSupport.kt`) evalúa la expresión constante con `MathEngine` en lugar de mirar la forma del AST. El motor conserva la forma tal como se escribió — `-9` es `Neg(Const(9))` y `3/4` es un cociente, no `Const(-9)` ni `Const(3/4)` — así que aceptar sólo `Expr.Const` devolvía `null` para los mismos formatos que la propia pantalla promete aceptar, y el marcador de la recta numérica volvía a la solución sin avisar (las flechas parecían muertas). La puerta sigue siendo estrecha a propósito: variables, ecuaciones, magnitudes con unidad y divisiones por cero siguen dando `null`; lo que cambió es que un número negativo o una fracción ya son un número.
 - **Las plantillas que la ruta acepta se derivan del currículo**: `MaticaRoute.KNOWN_TEMPLATES` (`shared/presentation/route/MaticaRoute.kt`) se construye con `ExerciseTemplates.all.mapTo(LinkedHashSet()) { it.id }`. La lista escrita a mano funcionó hasta que el currículo añadió `integer-ops`: la plantilla tenía plan, se dibujaba en las lecciones y sin embargo `practice/integer-ops/<semilla>` se rechazaba, así que ni un enlace profundo ni «Practicar sin grupo» podían abrirla. El invariante `lasPlantillasConocidasSonLasDelCatalogo` en `MaticaRouteTest` es lo que impide que la separación vuelva a ocurrir en silencio; la dirección de dependencia sigue siendo la misma (`presentation` ya consumía `:shared:exercises` para el plan de render).
-- **El `content` de `MaticaStateView` es sólo para `Success`**: las otras variantes pintan su mensaje y punto, así que cualquier UI que deba verse siempre —incluido un formulario desactivado que explica el bloqueo— va como **hermana** del contenedor, no dentro de su `content`. `LoginScreen` y `ClassroomScreen` lo violaban y sus campos desactivados no se componían nunca; `losServiciosBloqueadosMuestranSuFormularioDesactivado` es el test que lo impide.
+- **El `content` de `MaticaStateView` es sólo para `Success`**: las otras variantes pintan su mensaje y punto, así que cualquier UI que deba verse siempre va como **hermana** del contenedor, no dentro de su `content`. `LoginScreen` y `ClassroomScreen` lo violaban y sus campos quedaban invisibles; hoy las dos pantallas resuelven el caso sin cuenta con su propio estado y las acciones fuera, y `losServiciosBloqueadosDicenQueFaltaUnaCuenta` es el test que impide que vuelva un formulario que no se compone.
 - **El ritmo de un apartado lo da la agrupación, no el padding suelto**: `MaticaSection` (`shared/presentation/components/MaticaChips.kt`) pega el título a lo que titula con `sm` (8 dp) y el contenedor de la pantalla separa apartados con `lg` (16 dp); la cabecera individual quedó privada y sin relleno vertical porque con 8 dp por lado el título quedaba más lejos de su propia tarjeta que una tarjeta de la siguiente. `MaticaLayoutMetricsTest` mide los dos huecos en píxeles del dispositivo, y `MaticaStateRhythmTest` fija el ritmo único de los cuatro cuerpos de estado.
 - **El cuerpo de las pantallas se topea, no se estira**: `MaticaLayout.maxContentWidth` (640 dp) con `MaticaScreen` centrando el cuerpo; en un teléfono no se nota porque no lo alcanza, y en una ventana ancha evita que un renglón cruce toda la pantalla y el ojo pierda el inicio del siguiente. Los objetivos táctiles y los marcos de glifo salen del mismo token (`touchTarget` 48 dp, `glyphFrame` 24 dp) en lugar de números sueltos por componente.
 - CI: `.github/workflows/ci.yml` corre `jvmTest` y `testAndroidHostTest` de `:shared:math-engine`, `:shared:math-remote`, `:shared:learning-engine`, `:shared:exercises` y `:design-system`, después `:shared:presentation:compileKotlinJvm`, `:shared:presentation:jvmTest` y `:shared:presentation:testAndroidHostTest`, más `:apps:androidApp:assembleDebug` en `ubuntu-latest`, y publica el APK debug como artefacto. El job se llama `Verificación Full Kotlin` y ese nombre es estable porque la protección de `main` lo exige; añadir módulos agrega pasos, no renombra el check. Las pruebas de instrumentación Compose **no** entran en CI: necesitan un dispositivo o emulador, y correrían contra el hardware de quien programa; se ejecutan a mano y su estado se declara en la matriz. El contraste Kotlin↔SymPy **no** entra en CI: necesita el servicio Python levantado, y un verde que dependa de un motor no desplegado sería una señal falsa. Los jobs de `lint` y `backend:test` se añaden cuando exista código que cubrir; crear un paso vacío daría una señal de verde sin significado. Sin fusión a `main` con CI en rojo. Consecuencia operativa: el filtro de ramas se evalúa en `opened`, `synchronize`, `reopened`, `push` a `main` y `workflow_dispatch`, así que **toda PR se abre contra `main`** — una PR apilada sobre otra rama de trabajo no genera ningún check y no tendría evidencia que consultar.

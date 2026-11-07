@@ -1,0 +1,36 @@
+-- Cola local de intentos. El id lo genera el dominio antes de guardar, así que reintentar el
+-- envío nunca duplica evidencia. `user_id` evita atribuir la cola de una cuenta a otra.
+CREATE TABLE pending_attempts (
+    id TEXT NOT NULL PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    skill_id TEXT NOT NULL,
+    exercise_id TEXT NOT NULL,
+    before_text TEXT NOT NULL,
+    after_text TEXT NOT NULL,
+    verdict TEXT NOT NULL,
+    used_hint INTEGER NOT NULL,
+    occurred_at TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+);
+
+CREATE INDEX pending_attempts_user ON pending_attempts(user_id);
+
+selectPendingForUser:
+SELECT id, user_id, skill_id, exercise_id, before_text, after_text, verdict, used_hint, occurred_at, created_at
+FROM pending_attempts
+WHERE user_id = ?
+ORDER BY created_at
+LIMIT ?;
+
+countPendingForUser:
+SELECT count(*) FROM pending_attempts WHERE user_id = ?;
+
+insertPending:
+INSERT OR REPLACE INTO pending_attempts(id, user_id, skill_id, exercise_id, before_text, after_text, verdict, used_hint, occurred_at, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deletePending:
+DELETE FROM pending_attempts WHERE id = ?;
+
+pruneOlderThan:
+DELETE FROM pending_attempts WHERE created_at < ?;

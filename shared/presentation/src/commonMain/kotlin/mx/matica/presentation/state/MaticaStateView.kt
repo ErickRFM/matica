@@ -46,6 +46,7 @@ import mx.matica.design.motion.LocalMotionStyle
 import mx.matica.design.motion.MaticaMotion
 import mx.matica.design.motion.MotionStyle
 import mx.matica.design.theme.LocalMaticaSemanticColors
+import mx.matica.design.tokens.MaticaLayout
 import mx.matica.design.tokens.MaticaShapes
 import mx.matica.design.tokens.MaticaSpacing
 
@@ -62,21 +63,25 @@ fun <T> MaticaStateView(
     content: @Composable (T) -> Unit,
 ) {
     val motion = LocalMotionStyle.current
-    val shift = if (motion.reduced) 0 else 24
+    // El desplazamiento inicial lo decide `slideSpec`: con movimiento reducido es un `snap` y la
+    // hoja aparece ya en su sitio, así que aquí no queda ninguna compensación que ajustar.
     AnimatedContent(
         targetState = state,
         transitionSpec = {
             fadeIn(MaticaMotion.fadeSpec(motion)) +
-                slideInVertically(MaticaMotion.contentSpec(motion)) { it / 3 + shift } togetherWith
+                slideInVertically(MaticaMotion.slideSpec(motion)) { it / 3 } togetherWith
                 fadeOut(MaticaMotion.fadeSpec(motion)) +
-                slideOutVertically(MaticaMotion.contentSpec(motion)) { it / 3 }
+                slideOutVertically(MaticaMotion.slideSpec(motion)) { it / 3 }
         },
         modifier = modifier.semantics { liveRegion = LiveRegionMode.Polite },
         label = "matica-state",
     ) { current ->
         when (current) {
             is MaticaViewState.Loading -> LoadingBody()
-            is MaticaViewState.Empty -> MessageBody(current.title, current.description)
+            // Un `Empty` con `onRetry` recibía el callback y lo tiraba: la pantalla del player, que
+            // ofrece «volver a la lección» cuando no hubo generador, se quedaba sin ninguna salida
+            // visible además del botón de atrás.
+            is MaticaViewState.Empty -> MessageBody(current.title, current.description, current.retryLabel, onRetry)
             is MaticaViewState.Error -> MessageBody(current.title, current.detail, current.retryLabel, onRetry)
             is MaticaViewState.Offline -> MessageBody(
                 title = current.title,
@@ -222,7 +227,7 @@ private fun MessageBody(
 ) {
     val rhythm = rhythmOf(StateBody.Message)
     Column(
-        modifier = Modifier.fillMaxSize().widthIn(max = 420.dp).padding(rhythm.bodyPadding),
+        modifier = Modifier.fillMaxSize().widthIn(max = MaticaLayout.messageWidth).padding(rhythm.bodyPadding),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(rhythm.gap, Alignment.CenterVertically),
     ) {

@@ -85,6 +85,9 @@ jobs:
       - name: Pruebas de rutas, sesión y renderizador (target Android, host)
         run: ./gradlew :shared:presentation:testAndroidHostTest --stacktrace
 
+      - name: Pruebas de datos de la app (cliente HTTP y cola local, host JVM)
+        run: ./gradlew :apps:androidApp:testDebugUnitTest --stacktrace
+
       - name: Compilar pruebas instrumentadas (sin ejecutar emulador)
         run: ./gradlew :apps:androidApp:assembleDebugAndroidTest --stacktrace
 
@@ -103,6 +106,7 @@ jobs:
             shared/exercises/build/reports/tests/
             shared/presentation/build/reports/tests/
             design-system/build/reports/tests/
+            apps/androidApp/build/reports/tests/
             backend/api/build/reports/tests/
           if-no-files-found: ignore
           retention-days: 14

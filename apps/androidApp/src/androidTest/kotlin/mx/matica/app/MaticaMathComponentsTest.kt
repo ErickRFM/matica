@@ -6,9 +6,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.assertIsDisplayed
@@ -166,6 +168,78 @@ class MaticaMathComponentsTest {
         assertTrue(
             engine.parse(plan.equationText) is ParseOutcome.Success && figure.totalAt(plan.solution) == figure.total,
             "La figura pintada no cierra con su ecuación: ${plan.equationText}",
+        )
+    }
+
+    /**
+     * La figura tiene que verse. `GeometryView` medía mal su lienzo (`onSizeChanged` estaba importado
+     * y nunca aplicado), así que `canvasSize` se quedaba en cero y los dos `Animatable` nunca crecían:
+     * en la captura del teléfono el rectángulo era un punto de 5 dp junto al asa. Sobre una imagen de
+     * 904x407 px la sonda contó 99,45 % de un solo color y sólo 1.844 px de primaria.
+     *
+     * Después de la corrección, en el mismo camino y el mismo dispositivo: 50,29 % de tinta, una
+     * ranura horizontal de 530 px (58,6 %) y vertical de 383 px (94,1 %). Los umbrales de abajo dejan
+     * margen para cambiar el grosor del trazo, pero no para que la figura vuelva a no dibujarse.
+     */
+    @Test
+    fun laFiguraGeometricaSeDibuja() {
+        val session = session()
+        val plan = requireNotNull(session.startPractice(GEOMETRY_TEMPLATE, 1L)) { "Sin plan geométrico" }
+        val figure = requireNotNull(plan.figure)
+        rule.setContent {
+            MaticaApp(session = session, navigator = MaticaNavigator(MaticaRoute.Practice(GEOMETRY_TEMPLATE, 1L)))
+        }
+        rule.waitForIdle()
+
+        val bitmap = rule
+            .onNode(hasContentDescription("Rectángulo de lado conocido ${figure.knownSide}", substring = true))
+            .performScrollTo()
+            .captureToImage()
+            .asAndroidBitmap()
+        val totalPixeles = bitmap.width * bitmap.height
+        val frecuencia = HashMap<Int, Int>()
+        for (y in 0 until bitmap.height) {
+            for (x in 0 until bitmap.width) {
+                val p = bitmap.getPixel(x, y)
+                frecuencia[p] = (frecuencia[p] ?: 0) + 1
+            }
+        }
+        val modal = frecuencia.entries.maxByOrNull { it.value }!!
+
+        var mayorRanuraHorizontal = 0
+        var mayorRanuraVertical = 0
+        for (y in 0 until bitmap.height) {
+            var racha = 0
+            for (x in 0 until bitmap.width) {
+                if (bitmap.getPixel(x, y) == modal.key) {
+                    mayorRanuraHorizontal = maxOf(mayorRanuraHorizontal, racha)
+                    racha = 0
+                } else {
+                    racha++
+                }
+            }
+            mayorRanuraHorizontal = maxOf(mayorRanuraHorizontal, racha)
+        }
+        for (x in 0 until bitmap.width) {
+            var racha = 0
+            for (y in 0 until bitmap.height) {
+                racha = if (bitmap.getPixel(x, y) == modal.key) 0 else racha + 1
+                mayorRanuraVertical = maxOf(mayorRanuraVertical, racha)
+            }
+        }
+        val tinta = 100.0 * (totalPixeles - modal.value) / totalPixeles
+        val ranuraHorizontal = 100.0 * mayorRanuraHorizontal / bitmap.width
+        val ranuraVertical = 100.0 * mayorRanuraVertical / bitmap.height
+
+        assertTrue(
+            tinta >= 25.0,
+            "La figura apenas pinta ($tinta % de la imagen es tinta distinta del fondo): " +
+                "el lienzo volvió a medir cero y el rectángulo no se dibuja.",
+        )
+        assertTrue(
+            ranuraHorizontal >= 40.0 && ranuraVertical >= 60.0,
+            "El rectángulo no ocupa su marco (ranura horizontal $ranuraHorizontal %, vertical " +
+                "$ranuraVertical %): se pinta algo, pero no la figura completa.",
         )
     }
 
