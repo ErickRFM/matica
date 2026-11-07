@@ -5,6 +5,7 @@ import java.time.Instant
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -271,6 +272,96 @@ class DatabaseIntegrationTest {
                     }
                 }
                 assertEquals(9, ledgerCount)
+
+                // Classroom & Assignment tests (V3 Flyway schema verification)
+                val classroom = JdbcClassroomRepository(database)
+                val assignment = classroom.createAssignment(
+                    groupId = group.id,
+                    skillId = "integer-operations",
+                    targetMastery = "proficient",
+                    dueDate = Instant.parse("2026-12-01T00:00:00Z"),
+                    teacherId = owner.id,
+                )
+                assertNotNull(assignment)
+                assertEquals(group.id, assignment.groupId)
+                assertEquals("integer-operations", assignment.skillId)
+
+                // Check assignment_progress was populated for current student
+                val initialAssignments = classroom.listAssignments(group.id)
+                assertEquals(1, initialAssignments.size)
+                assertEquals(0, initialAssignments[0].completedCount)
+                assertEquals(1, initialAssignments[0].totalCount)
+
+                val progressStatus = database.withConnection { conn ->
+                    conn.prepareStatement("select status from assignment_progress where assignment_id = ? and student_id = ?").use { stmt ->
+                        stmt.setObject(1, assignment.id)
+                        stmt.setObject(2, student.id)
+                        stmt.executeQuery().use { rs -> if (rs.next()) rs.getString(1) else null }
+                    }
+                }
+                assertEquals("assigned", progressStatus)
+
+                // Record attempt updates assignment progress to completed
+                classroom.recordAttempt(student.id, "integer-operations", "valid")
+                val updatedAssignments = classroom.listAssignments(group.id)
+                assertEquals(1, updatedAssignments[0].completedCount)
+
+                // Classroom heatmap
+                val heatmap = classroom.getHeatmap(group.id)
+                assertEquals(group.id.toString(), heatmap.groupId)
+                assertEquals(1, heatmap.students.size)
+                assertEquals(15, heatmap.skills.size)
+                val studentCell = heatmap.students[0].cells.first { it.skillId == "integer-operations" }
+                assertEquals("proficient", studentCell.mastery)
+                assertFalse(studentCell.struggling)
+
+                // Classroom insights
+                val insights = classroom.getInsights(group.id)
+                assertEquals(group.id.toString(), insights.groupId)
+                assertTrue(insights.totalAttempts > 0)
+                assertTrue(insights.overallAccuracy > 0.0)
+
+                // Zero-PII Anonymous Student Registration (COPPA compliance)
+                val anonEmail = "student_${UUID.randomUUID()}@student.matica.internal"
+                val anonUser = users.create(anonEmail, anonEmail, "Búho-Veloz-42", "dummy-hash")
+                assertNotNull(anonUser)
+                assertTrue(groups.addMember(group.id, anonUser.id))
+                val groupMembersAfterJoin = groups.members(group.id)
+                assertEquals(3, groupMembersAfterJoin.size)
+                assertTrue(groupMembersAfterJoin.any { it.userId == anonUser.id && it.displayName == "Búho-Veloz-42" })
+
+                // Telemetry events (batch insert & query)
+                val telemetry = JdbcTelemetryRepository(database)
+                val event1Id = UUID.randomUUID().toString()
+                val event2Id = UUID.randomUUID().toString()
+                val recordedCount = telemetry.recordBatch(
+                    student.id,
+                    listOf(
+                        TelemetryEventDto(
+                            id = event1Id,
+                            eventType = "step_dwell",
+                            skillId = "integer-operations",
+                            exerciseId = "ex-1",
+                            dwellMs = 4500L,
+                            metadata = mapOf("difficulty" to "medium"),
+                            recordedAt = "2026-11-07T14:00:00Z",
+                        ),
+                        TelemetryEventDto(
+                            id = event2Id,
+                            eventType = "struggle_detected",
+                            skillId = "exponent-rules",
+                            exerciseId = "ex-exp-1",
+                            dwellMs = 12000L,
+                            metadata = mapOf("hints_shown" to "1"),
+                            recordedAt = "2026-11-07T14:05:00Z",
+                        ),
+                    ),
+                )
+                assertEquals(2, recordedCount)
+                val telemetryList = telemetry.listForUser(student.id)
+                assertEquals(2, telemetryList.size)
+                assertTrue(telemetryList.any { it.eventType == "step_dwell" && it.dwellMs == 4500L })
+                assertTrue(telemetryList.any { it.eventType == "struggle_detected" && it.dwellMs == 12000L })
             }
         }
     }

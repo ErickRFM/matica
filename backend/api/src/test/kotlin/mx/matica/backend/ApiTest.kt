@@ -22,6 +22,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -382,6 +383,278 @@ class ApiTest {
         assertEquals("1", summary["level"]?.jsonPrimitive?.content)
     }
 
+    @Test
+    fun studentJoinRegistersAnonymousUserWithSyntheticEmail() = testApplication {
+        val fixture = fixture()
+        application { maticaModule(fixture.services) }
+        val teacherToken = client.register("docente@escuela.mx")
+
+        // Teacher creates group
+        val groupRes = client.post("/v1/groups") {
+            header(HttpHeaders.Authorization, "Bearer $teacherToken")
+            contentType(ContentType.Application.Json)
+            setBody("""{"name":"Matemáticas 3B"}""")
+        }
+        assertEquals(HttpStatusCode.Created, groupRes.status)
+        val inviteCode = groupRes.bodyAsText().json()["inviteCode"]!!.jsonPrimitive.content
+
+        // Student joins anonymously
+        val joinRes = client.post("/v1/auth/student-join") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"code":"$inviteCode","displayName":"Búho-Veloz-42"}""")
+        }
+        assertEquals(HttpStatusCode.Created, joinRes.status)
+        val joinBody = joinRes.bodyAsText().json()
+        val studentToken = joinBody["token"]!!.jsonPrimitive.content
+        assertEquals("student", joinBody["role"]?.jsonPrimitive?.content)
+        assertEquals("true", joinBody["isAnonymous"]?.jsonPrimitive?.content)
+
+        val userObj = joinBody["user"]!!.jsonObject
+        val studentEmail = userObj["email"]!!.jsonPrimitive.content
+        assertTrue(studentEmail.startsWith("student_"))
+        assertTrue(studentEmail.endsWith("@student.matica.internal"))
+        assertEquals("Búho-Veloz-42", userObj["displayName"]?.jsonPrimitive?.content)
+
+        // Authenticate with student token
+        val meRes = client.get("/v1/me") { header(HttpHeaders.Authorization, "Bearer $studentToken") }
+        assertEquals(HttpStatusCode.OK, meRes.status)
+        assertEquals(studentEmail, meRes.bodyAsText().json()["email"]?.jsonPrimitive?.content)
+
+        // Invalid code returns 404
+        val badJoin = client.post("/v1/auth/student-join") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"code":"XXXXXX","displayName":"Otro"}""")
+        }
+        assertEquals(HttpStatusCode.NotFound, badJoin.status)
+    }
+
+    @Test
+    fun curriculumBundleReturns15SkillsAndSupports304() = testApplication {
+        val fixture = fixture()
+        application { maticaModule(fixture.services) }
+
+        // Initial fetch: 200 OK with all 15 skills
+        val res = client.get("/v1/curriculum/bundle")
+        assertEquals(HttpStatusCode.OK, res.status)
+        val body = res.bodyAsText().json()
+        assertEquals("2", body["version"]?.jsonPrimitive?.content)
+        assertEquals("15", body["templatesCount"]?.jsonPrimitive?.content)
+        val skills = (body["skills"] as JsonArray).map { it.jsonObject }
+        assertEquals(15, skills.size)
+        assertTrue(body["checksum"]!!.jsonPrimitive.content.isNotBlank())
+
+        // Fetch with version 2 returns 304 Not Modified
+        val notModified = client.get("/v1/curriculum/bundle?version=2")
+        assertEquals(HttpStatusCode.NotModified, notModified.status)
+
+        // Fetch with older version 1 returns 200 OK with full bundle
+        val olderVersion = client.get("/v1/curriculum/bundle?version=1")
+        assertEquals(HttpStatusCode.OK, olderVersion.status)
+    }
+
+    @Test
+    fun stateSyncReconcilesAttemptsAndReturnsConsolidatedState() = testApplication {
+        val fixture = fixture()
+        application { maticaModule(fixture.services) }
+        val token = client.register("estudiante@escuela.mx")
+
+        val att1 = UUID.randomUUID().toString()
+        val att2 = UUID.randomUUID().toString()
+        val syncBody = """
+            {
+                "lastSyncedAt": null,
+                "pendingAttempts": [
+                    {
+                        "id": "$att1",
+                        "skillId": "integer-operations",
+                        "exerciseId": "ex-1",
+                        "before": "1+1",
+                        "after": "2",
+                        "verdict": "valid",
+                        "usedHint": false,
+                        "occurredAt": "2026-11-06T10:00:00Z"
+                    },
+                    {
+                        "id": "$att2",
+                        "skillId": "integer-operations",
+                        "exerciseId": "ex-2",
+                        "before": "2+2",
+                        "after": "5",
+                        "verdict": "invalid",
+                        "usedHint": false,
+                        "occurredAt": "2026-11-06T10:05:00Z"
+                    }
+                ]
+            }
+        """.trimIndent()
+
+        val syncRes = client.post("/v1/sync/state") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody(syncBody)
+        }
+        assertEquals(HttpStatusCode.OK, syncRes.status)
+        val state = syncRes.bodyAsText().json()
+        assertTrue(state.containsKey("serverTime"))
+        val mastery = state["skillsMastery"]!!.jsonObject
+        assertTrue(mastery.containsKey("integer-operations"))
+        assertEquals("17", state["totalXp"]?.jsonPrimitive?.content)
+        assertEquals("1", state["currentStreak"]?.jsonPrimitive?.content)
+
+        // Re-sync with duplicate attempt does not duplicate XP
+        val dupRes = client.post("/v1/sync/state") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody(syncBody)
+        }
+        assertEquals(HttpStatusCode.OK, dupRes.status)
+        val dupState = dupRes.bodyAsText().json()
+        assertEquals("17", dupState["totalXp"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun assignmentsCanBeCreatedAndListedByGroupMembers() = testApplication {
+        val fixture = fixture()
+        application { maticaModule(fixture.services) }
+        val teacherToken = client.register("maestro@escuela.mx")
+        val studentToken = client.register("alumno@escuela.mx")
+
+        // Teacher creates group
+        val groupRes = client.post("/v1/groups") {
+            header(HttpHeaders.Authorization, "Bearer $teacherToken")
+            contentType(ContentType.Application.Json)
+            setBody("""{"name":"Álgebra 1"}""")
+        }
+        val groupId = groupRes.bodyAsText().json()["id"]!!.jsonPrimitive.content
+        val inviteCode = groupRes.bodyAsText().json()["inviteCode"]!!.jsonPrimitive.content
+
+        // Student joins group
+        client.post("/v1/groups/join") {
+            header(HttpHeaders.Authorization, "Bearer $studentToken")
+            contentType(ContentType.Application.Json)
+            setBody("""{"code":"$inviteCode"}""")
+        }
+
+        // Student cannot create assignment (403 Forbidden)
+        val forbiddenRes = client.post("/v1/groups/$groupId/assignments") {
+            header(HttpHeaders.Authorization, "Bearer $studentToken")
+            contentType(ContentType.Application.Json)
+            setBody("""{"skillId":"integer-operations","targetMastery":"proficient"}""")
+        }
+        assertEquals(HttpStatusCode.Forbidden, forbiddenRes.status)
+
+        // Teacher creates assignment
+        val createRes = client.post("/v1/groups/$groupId/assignments") {
+            header(HttpHeaders.Authorization, "Bearer $teacherToken")
+            contentType(ContentType.Application.Json)
+            setBody("""{"skillId":"integer-operations","targetMastery":"proficient","dueDate":"2026-12-01T00:00:00Z"}""")
+        }
+        assertEquals(HttpStatusCode.Created, createRes.status)
+        val assignObj = createRes.bodyAsText().json()
+        assertEquals(groupId, assignObj["groupId"]?.jsonPrimitive?.content)
+        assertEquals("integer-operations", assignObj["skillId"]?.jsonPrimitive?.content)
+
+        // Teacher and student can list assignments
+        val listRes = client.get("/v1/groups/$groupId/assignments") {
+            header(HttpHeaders.Authorization, "Bearer $teacherToken")
+        }
+        assertEquals(HttpStatusCode.OK, listRes.status)
+        val assignments = (Json.parseToJsonElement(listRes.bodyAsText()) as JsonArray).map { it.jsonObject }
+        assertEquals(1, assignments.size)
+        assertEquals("integer-operations", assignments[0]["skillId"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun classroomHeatmapAndInsightsAreAccessibleToGroupMembers() = testApplication {
+        val fixture = fixture()
+        application { maticaModule(fixture.services) }
+        val teacherToken = client.register("profe@escuela.mx")
+        val studentToken = client.register("estudiante_hm@escuela.mx")
+
+        val groupRes = client.post("/v1/groups") {
+            header(HttpHeaders.Authorization, "Bearer $teacherToken")
+            contentType(ContentType.Application.Json)
+            setBody("""{"name":"Geometría y Álgebra"}""")
+        }
+        val groupId = groupRes.bodyAsText().json()["id"]!!.jsonPrimitive.content
+        val inviteCode = groupRes.bodyAsText().json()["inviteCode"]!!.jsonPrimitive.content
+
+        client.post("/v1/groups/join") {
+            header(HttpHeaders.Authorization, "Bearer $studentToken")
+            contentType(ContentType.Application.Json)
+            setBody("""{"code":"$inviteCode"}""")
+        }
+
+        // Student performs an attempt
+        client.post("/v1/attempts") {
+            header(HttpHeaders.Authorization, "Bearer $studentToken")
+            contentType(ContentType.Application.Json)
+            setBody(attemptJson(UUID.randomUUID().toString(), skill = "integer-operations", verdict = "valid"))
+        }
+
+        // Heatmap
+        val heatmapRes = client.get("/v1/groups/$groupId/heatmap") {
+            header(HttpHeaders.Authorization, "Bearer $teacherToken")
+        }
+        assertEquals(HttpStatusCode.OK, heatmapRes.status)
+        val heatmapBody = heatmapRes.bodyAsText().json()
+        assertEquals(groupId, heatmapBody["groupId"]?.jsonPrimitive?.content)
+        val students = (heatmapBody["students"] as JsonArray).map { it.jsonObject }
+        assertEquals(1, students.size)
+        val skills = (heatmapBody["skills"] as JsonArray).map { it.jsonPrimitive.content }
+        assertEquals(15, skills.size)
+
+        // Insights
+        val insightsRes = client.get("/v1/groups/$groupId/insights") {
+            header(HttpHeaders.Authorization, "Bearer $teacherToken")
+        }
+        assertEquals(HttpStatusCode.OK, insightsRes.status)
+        val insightsBody = insightsRes.bodyAsText().json()
+        assertEquals(groupId, insightsBody["groupId"]?.jsonPrimitive?.content)
+        assertTrue(insightsBody.containsKey("commonErrors"))
+        assertTrue(insightsBody.containsKey("overallAccuracy"))
+    }
+
+    @Test
+    fun telemetryEventsEndpointAcceptsBatchOfEvents() = testApplication {
+        val fixture = fixture()
+        application { maticaModule(fixture.services) }
+        val token = client.register("telemetry_user@escuela.mx")
+
+        val payload = """
+            {
+                "events": [
+                    {
+                        "eventType": "step_dwell",
+                        "skillId": "integer-operations",
+                        "exerciseId": "ex-dwell",
+                        "dwellMs": 3500,
+                        "metadata": {"step": "1"},
+                        "recordedAt": "2026-11-06T11:00:00Z"
+                    },
+                    {
+                        "eventType": "struggle_detected",
+                        "skillId": "integer-operations",
+                        "exerciseId": "ex-dwell",
+                        "dwellMs": 8500,
+                        "metadata": {"hints": "2"},
+                        "recordedAt": "2026-11-06T11:01:00Z"
+                    }
+                ]
+            }
+        """.trimIndent()
+
+        val response = client.post("/v1/telemetry/events") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody(payload)
+        }
+        assertEquals(HttpStatusCode.Accepted, response.status)
+        val body = response.bodyAsText().json()
+        assertEquals("2", body["accepted"]?.jsonPrimitive?.content)
+        assertTrue(body.containsKey("serverTime"))
+    }
+
     private fun fixture(
         clock: Clock = Clock.fixed(fixedNow, ZoneOffset.UTC),
         config: BackendConfig = testConfig(),
@@ -419,7 +692,23 @@ private class Fixture(
     val groups = InMemoryGroups(users)
     val devices = InMemoryDevices()
     val gamification = InMemoryGamification(users)
-    val services = MaticaServices.forTests(config, users, attempts, groups, devices, gamification, clock = clock)
+    val classroom = InMemoryClassroomRepository(groups, attempts)
+    val telemetry = InMemoryTelemetryRepository()
+    val curriculumOta = CurriculumOtaService(clock)
+    val stateSync = StateSyncService(attempts, gamification, classroom, clock)
+    val services = MaticaServices.forTests(
+        config = config,
+        users = users,
+        attempts = attempts,
+        groups = groups,
+        devices = devices,
+        gamification = gamification,
+        classroom = classroom,
+        telemetry = telemetry,
+        curriculumOta = curriculumOta,
+        stateSync = stateSync,
+        clock = clock,
+    )
 }
 
 private suspend fun HttpClient.registerRaw(email: String, password: String) = post("/v1/auth/register") {

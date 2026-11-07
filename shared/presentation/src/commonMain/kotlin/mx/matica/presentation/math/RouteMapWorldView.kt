@@ -573,6 +573,7 @@ private fun WorldChestChip(
 
 private fun levelGlyphIcon(level: MasteryLevel): MaticaIcon = when (level) {
     MasteryLevel.NOT_INTRODUCED -> MaticaIcon.LESSON
+    MasteryLevel.NOVICE -> MaticaIcon.LESSON
     MasteryLevel.DEVELOPING -> MaticaIcon.XP
     MasteryLevel.PROFICIENT -> MaticaIcon.CHECK
     MasteryLevel.FLUENT -> MaticaIcon.GEM

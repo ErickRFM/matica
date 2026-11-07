@@ -66,6 +66,10 @@ internal fun Application.maticaModule(services: MaticaServices) {
         authRoutes(services)
         attemptRoutes(services)
         groupRoutes(services)
+        classroomRoutes(services)
+        curriculumRoutes(services)
+        stateSyncRoutes(services)
+        telemetryRoutes(services)
         deviceRoutes(services)
         symbolicRoutes(services)
         gamificationRoutes(services)
@@ -91,6 +95,54 @@ private fun Route.authRoutes(services: MaticaServices) {
             ?: return@post call.fail(HttpStatusCode.BadRequest, "invalid_input", "Faltan correo o contraseña.")
         val outcome = withContext(Dispatchers.IO) { auth.login(body.email, body.password) }
         call.respondAuth(outcome, HttpStatusCode.OK)
+    }
+
+    post("/v1/auth/student-join") {
+        if (!call.requireDatabase(services)) return@post
+        val users = services.users
+            ?: return@post call.fail(HttpStatusCode.ServiceUnavailable, "database_unavailable", "Base de datos no disponible.")
+        val groups = services.groups
+            ?: return@post call.fail(HttpStatusCode.ServiceUnavailable, "groups_unavailable", "Servicio de grupos no disponible.")
+        val jwt = services.jwt
+            ?: return@post call.fail(HttpStatusCode.ServiceUnavailable, "auth_unavailable", "Las cuentas no están configuradas.")
+
+        val body = call.receiveJsonOrNull<StudentJoinRequest>()
+            ?: return@post call.fail(HttpStatusCode.BadRequest, "invalid_input", "Falta el código de invitación.")
+        val rawCode = body.code ?: body.inviteCode
+        if (rawCode.isNullOrBlank()) {
+            return@post call.fail(HttpStatusCode.BadRequest, "invalid_input", "Falta el código de invitación.")
+        }
+        val code = InviteCodes.normalize(rawCode)
+            ?: return@post call.fail(HttpStatusCode.NotFound, "group_not_found", "Ese código no corresponde a ningún grupo.")
+        val group = withContext(Dispatchers.IO) { groups.findByCode(code) }
+            ?: return@post call.fail(HttpStatusCode.NotFound, "group_not_found", "Ese código no corresponde a ningún grupo.")
+
+        val anonId = UUID.randomUUID()
+        val syntheticEmail = "student_${anonId}@student.matica.internal"
+        val rawName = body.displayName ?: body.nickname
+        val displayName = Validation.displayName(rawName) ?: "Estudiante"
+        val passwordHash = services.hasher.hash(UUID.randomUUID().toString())
+
+        val user = withContext(Dispatchers.IO) {
+            users.create(syntheticEmail, syntheticEmail, displayName, passwordHash)
+        } ?: return@post call.fail(HttpStatusCode.InternalServerError, "registration_failed", "No se pudo registrar al estudiante.")
+
+        withContext(Dispatchers.IO) { groups.addMember(group.id, user.id) }
+
+        val now = services.clock.instant()
+        val token = jwt.issue(user.id, user.email, now, role = "student", isAnonymous = true)
+        val expiresAt = now.plus(jwt.ttl)
+
+        call.respond(
+            HttpStatusCode.Created,
+            AuthResponse(
+                token = token,
+                expiresAt = expiresAt.toString(),
+                user = UserDto(user.id.toString(), user.email, user.displayName),
+                role = "student",
+                isAnonymous = true,
+            ),
+        )
     }
 
     get("/v1/me") {
@@ -157,6 +209,11 @@ private fun Route.attemptRoutes(services: MaticaServices) {
                             occurredAt = record.occurredAt,
                             timezone = call.request.headers["X-Timezone"],
                         )
+                    }
+                }
+                services.classroom?.let { classroom ->
+                    withContext(Dispatchers.IO) {
+                        classroom.recordAttempt(claims.userId, record.skillId, record.verdict)
                     }
                 }
                 call.respond(HttpStatusCode.Created, AttemptAccepted(id.toString(), "created"))
@@ -253,6 +310,159 @@ private fun Route.groupRoutes(services: MaticaServices) {
                         joinedAt = it.joinedAt.toString(),
                     )
                 },
+            ),
+        )
+    }
+}
+
+private fun Route.classroomRoutes(services: MaticaServices) {
+    post("/v1/groups/{id}/assignments") {
+        val claims = call.requireClaims(services) ?: return@post
+        if (!call.requireDatabase(services)) return@post
+        val classroom = services.classroom
+            ?: return@post call.fail(HttpStatusCode.ServiceUnavailable, "classroom_unavailable", "El servicio de aula no está disponible.")
+        val groups = services.groups ?: return@post
+        val id = call.parameters["id"]?.toUuidOrNull()
+            ?: return@post call.fail(HttpStatusCode.NotFound, "group_not_found", "El grupo no existe.")
+
+        val membership = withContext(Dispatchers.IO) { groups.membership(id, claims.userId) }
+            ?: return@post call.fail(HttpStatusCode.NotFound, "group_not_found", "El grupo no existe o no perteneces a él.")
+        if (membership.role != "owner") {
+            return@post call.fail(HttpStatusCode.Forbidden, "forbidden", "Solo el docente puede crear tareas.")
+        }
+
+        val body = call.receiveJsonOrNull<CreateAssignmentRequest>()
+            ?: return@post call.fail(HttpStatusCode.BadRequest, "invalid_input", "Faltan datos de la tarea.")
+        if (!Validation.validSkill(body.skillId)) {
+            return@post call.fail(HttpStatusCode.BadRequest, "unknown_skill", "La habilidad '${body.skillId}' no existe.")
+        }
+        val dueDate = body.dueDate?.let {
+            it.toInstantOrNull() ?: return@post call.fail(HttpStatusCode.BadRequest, "invalid_time", "La fecha límite no es válida.")
+        }
+
+        val assignment = withContext(Dispatchers.IO) {
+            classroom.createAssignment(
+                groupId = id,
+                skillId = body.skillId,
+                targetMastery = body.targetMastery,
+                dueDate = dueDate,
+                teacherId = claims.userId,
+            )
+        }
+        call.respond(
+            HttpStatusCode.Created,
+            AssignmentDto(
+                id = assignment.id.toString(),
+                groupId = assignment.groupId.toString(),
+                skillId = assignment.skillId,
+                targetMastery = assignment.targetMastery,
+                dueDate = assignment.dueDate?.toString(),
+                createdBy = assignment.createdBy.toString(),
+                createdAt = assignment.createdAt.toString(),
+                completedCount = 0,
+                totalCount = (membership.group.memberCount - 1).coerceAtLeast(0),
+            ),
+        )
+    }
+
+    get("/v1/groups/{id}/assignments") {
+        val claims = call.requireClaims(services) ?: return@get
+        if (!call.requireDatabase(services)) return@get
+        val classroom = services.classroom
+            ?: return@get call.fail(HttpStatusCode.ServiceUnavailable, "classroom_unavailable", "El servicio de aula no está disponible.")
+        val groups = services.groups ?: return@get
+        val id = call.parameters["id"]?.toUuidOrNull()
+            ?: return@get call.fail(HttpStatusCode.NotFound, "group_not_found", "El grupo no existe.")
+
+        withContext(Dispatchers.IO) { groups.membership(id, claims.userId) }
+            ?: return@get call.fail(HttpStatusCode.NotFound, "group_not_found", "El grupo no existe o no perteneces a él.")
+
+        val assignments = withContext(Dispatchers.IO) { classroom.listAssignments(id) }
+        call.respond(HttpStatusCode.OK, assignments)
+    }
+
+    get("/v1/groups/{id}/heatmap") {
+        val claims = call.requireClaims(services) ?: return@get
+        if (!call.requireDatabase(services)) return@get
+        val classroom = services.classroom
+            ?: return@get call.fail(HttpStatusCode.ServiceUnavailable, "classroom_unavailable", "El servicio de aula no está disponible.")
+        val groups = services.groups ?: return@get
+        val id = call.parameters["id"]?.toUuidOrNull()
+            ?: return@get call.fail(HttpStatusCode.NotFound, "group_not_found", "El grupo no existe.")
+
+        withContext(Dispatchers.IO) { groups.membership(id, claims.userId) }
+            ?: return@get call.fail(HttpStatusCode.NotFound, "group_not_found", "El grupo no existe o no perteneces a él.")
+
+        val heatmap = withContext(Dispatchers.IO) { classroom.getHeatmap(id) }
+        call.respond(HttpStatusCode.OK, heatmap)
+    }
+
+    get("/v1/groups/{id}/insights") {
+        val claims = call.requireClaims(services) ?: return@get
+        if (!call.requireDatabase(services)) return@get
+        val classroom = services.classroom
+            ?: return@get call.fail(HttpStatusCode.ServiceUnavailable, "classroom_unavailable", "El servicio de aula no está disponible.")
+        val groups = services.groups ?: return@get
+        val id = call.parameters["id"]?.toUuidOrNull()
+            ?: return@get call.fail(HttpStatusCode.NotFound, "group_not_found", "El grupo no existe.")
+
+        withContext(Dispatchers.IO) { groups.membership(id, claims.userId) }
+            ?: return@get call.fail(HttpStatusCode.NotFound, "group_not_found", "El grupo no existe o no perteneces a él.")
+
+        val insights = withContext(Dispatchers.IO) { classroom.getInsights(id) }
+        call.respond(HttpStatusCode.OK, insights)
+    }
+}
+
+private fun Route.curriculumRoutes(services: MaticaServices) {
+    get("/v1/curriculum/bundle") {
+        val versionParam = call.request.queryParameters["version"]?.toIntOrNull()
+        if (versionParam != null && services.curriculumOta.isUpToDate(versionParam)) {
+            call.respond(HttpStatusCode.NotModified, "")
+            return@get
+        }
+        val bundle = services.curriculumOta.getBundle()
+        call.respond(HttpStatusCode.OK, bundle)
+    }
+}
+
+private fun Route.stateSyncRoutes(services: MaticaServices) {
+    post("/v1/sync/state") {
+        val claims = call.requireClaims(services) ?: return@post
+        if (!call.requireDatabase(services)) return@post
+        val stateSync = services.stateSync
+            ?: return@post call.fail(HttpStatusCode.ServiceUnavailable, "sync_unavailable", "El servicio de sincronización no está disponible.")
+        val body = call.receiveJsonOrNull<SyncStateRequest>()
+            ?: return@post call.fail(HttpStatusCode.BadRequest, "invalid_input", "Cuerpo de sincronización inválido.")
+        val timezone = call.request.headers["X-Timezone"]
+        val response = withContext(Dispatchers.IO) {
+            stateSync.sync(claims.userId, body, timezone)
+        }
+        call.respond(HttpStatusCode.OK, response)
+    }
+}
+
+private fun Route.telemetryRoutes(services: MaticaServices) {
+    post("/v1/telemetry/events") {
+        val telemetry = services.telemetry
+            ?: return@post call.fail(HttpStatusCode.ServiceUnavailable, "telemetry_unavailable", "El servicio de telemetría no está disponible.")
+        val body = call.receiveJsonOrNull<TelemetryBatchRequest>()
+            ?: return@post call.fail(HttpStatusCode.BadRequest, "invalid_input", "Lote de eventos de telemetría inválido.")
+
+        val token = call.request.headers[HttpHeaders.Authorization]
+            ?.takeIf { it.startsWith("Bearer ", ignoreCase = true) }
+            ?.substringAfter(' ', "")
+            ?.trim()
+        val claims = token?.let { services.auth?.authenticate(it) }
+
+        val count = withContext(Dispatchers.IO) {
+            telemetry.recordBatch(claims?.userId, body.events)
+        }
+        call.respond(
+            HttpStatusCode.Accepted,
+            TelemetryResponse(
+                accepted = count,
+                serverTime = services.clock.instant().toString(),
             ),
         )
     }

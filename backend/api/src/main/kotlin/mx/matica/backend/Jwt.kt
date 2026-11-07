@@ -13,7 +13,13 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
-internal data class JwtClaims(val userId: UUID, val email: String, val expiresAt: Instant)
+internal data class JwtClaims(
+    val userId: UUID,
+    val email: String,
+    val expiresAt: Instant,
+    val role: String = "student",
+    val isAnonymous: Boolean = false,
+)
 
 /**
  * JWT HS256 mínimo, sin plugins de autenticación: el único consumidor es este servicio y así el
@@ -30,7 +36,13 @@ internal class JwtCodec(
     private val decoder = Base64.getUrlDecoder()
     private val json = Json { ignoreUnknownKeys = true }
 
-    fun issue(userId: UUID, email: String, now: Instant = Instant.now()): String {
+    fun issue(
+        userId: UUID,
+        email: String,
+        now: Instant = Instant.now(),
+        role: String = "student",
+        isAnonymous: Boolean = false,
+    ): String {
         val header = encoder.encodeToString(HEADER.toByteArray())
         val claims = encoder.encodeToString(
             json.encodeToString(Claims.serializer(), Claims(
@@ -39,6 +51,8 @@ internal class JwtCodec(
                 iss = issuer,
                 iat = now.epochSecond,
                 exp = now.plus(ttl).epochSecond,
+                role = role,
+                isAnonymous = isAnonymous,
             )).toByteArray(),
         )
         val signature = encoder.encodeToString(sign("$header.$claims"))
@@ -60,7 +74,13 @@ internal class JwtCodec(
         val expiresAt = Instant.ofEpochSecond(claims.exp)
         if (!expiresAt.isAfter(now)) return null
         val userId = UUID.fromString(claims.sub)
-        JwtClaims(userId = userId, email = claims.email, expiresAt = expiresAt)
+        JwtClaims(
+            userId = userId,
+            email = claims.email,
+            expiresAt = expiresAt,
+            role = claims.role,
+            isAnonymous = claims.isAnonymous,
+        )
     } catch (_: Exception) {
         null
     }
@@ -78,6 +98,8 @@ internal class JwtCodec(
         val iss: String,
         val iat: Long,
         val exp: Long,
+        val role: String = "student",
+        val isAnonymous: Boolean = false,
     )
 
     companion object {

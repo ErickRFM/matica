@@ -40,14 +40,15 @@ object MasteryRules {
 
         val latest = recent.takeLast(MasteryThresholds.DEMOTION_RECENT_EVIDENCES)
         val recentIncorrect = latest.count { it.quality == EvidenceQuality.INCORRECT }
-        if (level != MasteryLevel.NOT_INTRODUCED && recentIncorrect >= MasteryThresholds.DEMOTION_INCORRECT_REQUIRED) {
+        if (level != MasteryLevel.NOT_INTRODUCED && level != MasteryLevel.NOVICE && recentIncorrect >= MasteryThresholds.DEMOTION_INCORRECT_REQUIRED) {
             val to = level.retreated
             return MasteryChange(skill, level, to, "Baja a ${to.labelEs}: ${recentIncorrect} de las últimas " +
                 "${MasteryThresholds.DEMOTION_RECENT_EVIDENCES} evidencias son incorrectas ($counts).")
         }
 
         val nextLevel = when (level) {
-            MasteryLevel.NOT_INTRODUCED -> if (unaided + assisted >= 1) MasteryLevel.DEVELOPING else level
+            MasteryLevel.NOT_INTRODUCED,
+            MasteryLevel.NOVICE -> if (unaided + assisted >= 1) MasteryLevel.DEVELOPING else level
             MasteryLevel.DEVELOPING -> when {
                 unaided >= MasteryThresholds.PROFICIENT_UNAIDED_REQUIRED && incorrect == 0 -> MasteryLevel.PROFICIENT
                 else -> level

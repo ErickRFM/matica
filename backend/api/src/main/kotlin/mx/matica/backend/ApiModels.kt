@@ -25,7 +25,21 @@ data class RegisterRequest(val email: String, val password: String, val displayN
 data class LoginRequest(val email: String, val password: String)
 
 @Serializable
-data class AuthResponse(val token: String, val expiresAt: String, val user: UserDto)
+data class AuthResponse(
+    val token: String,
+    val expiresAt: String,
+    val user: UserDto,
+    val role: String = "student",
+    val isAnonymous: Boolean = false,
+)
+
+@Serializable
+data class StudentJoinRequest(
+    val code: String? = null,
+    val inviteCode: String? = null,
+    val displayName: String? = null,
+    val nickname: String? = null,
+)
 
 @Serializable
 data class AttemptRequest(
