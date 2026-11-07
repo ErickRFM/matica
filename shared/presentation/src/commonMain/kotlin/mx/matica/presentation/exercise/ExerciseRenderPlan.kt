@@ -127,6 +127,66 @@ private val INTEGER_OPS = TemplateSpec(
     ),
 )
 
+private val ORDER_OF_OPERATIONS = TemplateSpec(
+    labelEs = "Jerarquía de operaciones: paréntesis y precedencia",
+    strategyEs = "Primero los paréntesis, luego multiplicaciones y divisiones, y al final sumas y restas.",
+    slots = listOf(ExerciseSlot.EQUATION, ExerciseSlot.ANSWER_FRACTION, ExerciseSlot.NUMBER_LINE, ExerciseSlot.VERIFICATION),
+)
+
+private val DECIMAL_FRACTION_CONVERSION = TemplateSpec(
+    labelEs = "Conversión de decimal a fracción irreducible",
+    strategyEs = "Escribe el decimal como fracción y simplifica dividiendo numerador y denominador entre su mcd.",
+    slots = listOf(ExerciseSlot.EQUATION, ExerciseSlot.ANSWER_FRACTION, ExerciseSlot.NUMBER_LINE, ExerciseSlot.VERIFICATION),
+)
+
+private val PERCENTAGE_REASONING = TemplateSpec(
+    labelEs = "Razonamiento con porcentajes",
+    strategyEs = "El porcentaje P% representa la fracción P/100. Multiplica el total por la fracción correspondiente.",
+    slots = listOf(ExerciseSlot.EQUATION, ExerciseSlot.ANSWER_FRACTION, ExerciseSlot.NUMBER_LINE, ExerciseSlot.VERIFICATION),
+)
+
+private val EXPONENT_RULES = TemplateSpec(
+    labelEs = "Reglas de potencias: producto de potencias de igual base",
+    strategyEs = "Al multiplicar potencias de la misma base, conserva la base y suma los exponentes.",
+    slots = listOf(ExerciseSlot.EQUATION, ExerciseSlot.ANSWER_FRACTION, ExerciseSlot.NUMBER_LINE, ExerciseSlot.VERIFICATION),
+)
+
+private val COMBINING_LIKE_TERMS = TemplateSpec(
+    labelEs = "Agrupar términos semejantes",
+    strategyEs = "Agrupa y suma los coeficientes de los términos que comparten la misma incógnita.",
+    slots = listOf(ExerciseSlot.EQUATION, ExerciseSlot.ANSWER_FRACTION, ExerciseSlot.NUMBER_LINE, ExerciseSlot.GRAPH, ExerciseSlot.VERIFICATION),
+)
+
+private val SIGN_HANDLING = TemplateSpec(
+    labelEs = "Manejo de signos: distribución del negativo",
+    strategyEs = "El signo negativo fuera del paréntesis cambia los signos de cada término interior al distribuir.",
+    slots = listOf(ExerciseSlot.EQUATION, ExerciseSlot.ANSWER_FRACTION, ExerciseSlot.NUMBER_LINE, ExerciseSlot.GRAPH, ExerciseSlot.VERIFICATION),
+)
+
+private val ISOLATING_VARIABLE = TemplateSpec(
+    labelEs = "Aislar la incógnita: términos con variable en ambos miembros",
+    strategyEs = "Traslada los términos con incógnita a un lado y los términos constantes al otro aplicando operaciones inversas.",
+    slots = listOf(ExerciseSlot.EQUATION, ExerciseSlot.ANSWER_FRACTION, ExerciseSlot.NUMBER_LINE, ExerciseSlot.GRAPH, ExerciseSlot.VERIFICATION),
+)
+
+private val DOMAIN_RESTRICTIONS = TemplateSpec(
+    labelEs = "Restricciones del dominio: valor prohibido en denominador",
+    strategyEs = "La división entre cero no está definida; halla el valor de la incógnita que hace cero el denominador.",
+    slots = listOf(ExerciseSlot.EQUATION, ExerciseSlot.ANSWER_FRACTION, ExerciseSlot.NUMBER_LINE, ExerciseSlot.VERIFICATION),
+)
+
+private val SOLUTION_VERIFICATION = TemplateSpec(
+    labelEs = "Verificación por sustitución: ecuación con paréntesis y término exterior",
+    strategyEs = "Sustituye la propuesta en la ecuación original y comprueba que ambos lados resulten exactamente iguales.",
+    slots = listOf(ExerciseSlot.EQUATION, ExerciseSlot.ANSWER_FRACTION, ExerciseSlot.NUMBER_LINE, ExerciseSlot.GRAPH, ExerciseSlot.VERIFICATION),
+)
+
+private val EQUIVALENCE = TemplateSpec(
+    labelEs = "Equivalencia de expresiones: suma de términos distribuidos",
+    strategyEs = "Distribuye los factores en cada paréntesis y combina términos semejantes para obtener la forma simplificada.",
+    slots = listOf(ExerciseSlot.EQUATION, ExerciseSlot.ANSWER_FRACTION, ExerciseSlot.NUMBER_LINE, ExerciseSlot.GRAPH, ExerciseSlot.VERIFICATION),
+)
+
 /** Las plantillas del catálogo de render. `byId` coincide con `ExerciseTemplates` y la prueba lo ata. */
 object ExerciseRenderCatalog {
     private val specs: Map<String, TemplateSpec> = mapOf(
@@ -135,6 +195,16 @@ object ExerciseRenderCatalog {
         "distributive-linear" to DISTRIBUTIVE,
         "fraction-linear" to FRACTION,
         "rectangle-perimeter" to RECTANGLE_PERIMETER,
+        "order-of-operations" to ORDER_OF_OPERATIONS,
+        "combining-like-terms" to COMBINING_LIKE_TERMS,
+        "sign-handling" to SIGN_HANDLING,
+        "isolating-variable" to ISOLATING_VARIABLE,
+        "decimal-fraction-conversion" to DECIMAL_FRACTION_CONVERSION,
+        "percentage-reasoning" to PERCENTAGE_REASONING,
+        "exponent-rules" to EXPONENT_RULES,
+        "domain-restrictions" to DOMAIN_RESTRICTIONS,
+        "solution-verification" to SOLUTION_VERIFICATION,
+        "equivalence" to EQUIVALENCE,
     )
 
     val templateIds: List<String> get() = specs.keys.toList()

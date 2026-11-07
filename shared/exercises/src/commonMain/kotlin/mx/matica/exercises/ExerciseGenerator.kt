@@ -2,6 +2,7 @@ package mx.matica.exercises
 
 import kotlin.random.Random
 import mx.matica.math.MathEngine
+import mx.matica.math.domain.Restriction
 import mx.matica.math.parser.ParseOutcome
 import mx.matica.math.skills.SkillId
 import mx.matica.math.solve.SolveOutcome
@@ -81,15 +82,23 @@ class ExerciseGenerator(
     }
 
     /**
-     * El motor tiene la última palabra. Si el texto no se relee, si nace con una restricción de dominio,
-     * si el resolutor no llega a la misma respuesta o si la sustitución no satisface, el generador lo
-     * devuelve como rechazo en lugar de emitir un ejercicio cuya respuesta no está demostrada.
+     * El motor tiene la última palabra. Si el texto no se relee, si nace con una restricción de dominio
+     * inesperada, si el resolutor no llega a la misma respuesta o si la sustitución no satisface, el generador
+     * lo devuelve como rechazo en lugar de emitir un ejercicio cuya respuesta no está demostrada.
      */
     private fun disagreement(instance: ExerciseInstance, template: ExerciseTemplate): String? {
         if (engine.parse(instance.equationText) !is ParseOutcome.Success) {
             return "El texto generado no se volvió a leer: '${instance.equationText}'."
         }
         val restrictions = engine.restrictions(instance.equationText)
+        if (template.skill == SkillId.DOMAIN_RESTRICTIONS) {
+            val notEqual = restrictions.filterIsInstance<Restriction.NotEqualTo>().singleOrNull()
+                ?: return "Se esperaba una restricción de dominio única pero se obtuvo: $restrictions en '${instance.equationText}'."
+            if (notEqual.variable != instance.variable || notEqual.excluded != instance.solution) {
+                return "La restricción de dominio $notEqual no coincide con la solución guardada ${instance.solution} para ${instance.variable} en '${instance.equationText}'."
+            }
+            return null
+        }
         if (restrictions.isNotEmpty()) {
             return "El ejercicio nació con restricción de dominio $restrictions: '${instance.equationText}'."
         }
