@@ -1,4 +1,4 @@
-# Blueprint de la API de Mática: no aplicar hasta elegir explícitamente workspace y PostgreSQL.
+# API Mática: Render Ktor conecta a un proyecto PostgreSQL exclusivo de Supabase.\n# /readyz exige esquema Mática v1 y conexión SQL real; no usar /healthz para certificar BD.
 # Servicio simbólico existente matica-symbolic-staging NO se modifica.
 services:
   - type: web
@@ -9,7 +9,7 @@ services:
     dockerContext: .
     dockerfilePath: ./backend/api/Dockerfile
     plan: free
-    healthCheckPath: /healthz
+    healthCheckPath: /readyz
     envVars:
       - key: DATABASE_URL
         sync: false
