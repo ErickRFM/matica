@@ -131,14 +131,24 @@ class PerimeterRectangleTemplate : ExerciseTemplate {
     }
 }
 
-/** Currículo de plantillas del MVP: cada una apunta a una habilidad del grafo. */
+/** Currículo completo de plantillas: 15 habilidades del grafo curricular. */
 object ExerciseTemplates {
     val all: List<ExerciseTemplate> = listOf(
         IntegerOpsTemplate(),
-        TwoStepLinearTemplate(),
-        DistributiveLinearTemplate(),
+        OrderOfOperationsTemplate(),
         FractionLinearTemplate(),
+        DecimalFractionConversionTemplate(),
+        PercentageReasoningTemplate(),
+        ExponentRulesTemplate(),
         PerimeterRectangleTemplate(),
+        DistributiveLinearTemplate(),
+        CombiningLikeTermsTemplate(),
+        SignHandlingTemplate(),
+        TwoStepLinearTemplate(),
+        IsolatingVariableTemplate(),
+        DomainRestrictionsTemplate(),
+        SolutionVerificationTemplate(),
+        EquivalenceTemplate(),
     )
 
     fun byId(id: String): ExerciseTemplate? = all.firstOrNull { it.id == id }
@@ -151,6 +161,30 @@ internal fun ExerciseTemplate.ready(equation: Expr.Equals, solution: Long, param
             variable = variable,
             equationText = ExprPrinter.render(equation),
             solution = Rational.fromLong(solution),
+            parameters = params,
+            seed = seed,
+        ),
+    )
+
+internal fun ExerciseTemplate.ready(equation: Expr.Equals, solution: Rational, params: ParameterSet, seed: Long): GenerationOutcome =
+    GenerationOutcome.Ready(
+        ExerciseInstance(
+            templateId = id,
+            variable = variable,
+            equationText = ExprPrinter.render(equation),
+            solution = solution,
+            parameters = params,
+            seed = seed,
+        ),
+    )
+
+internal fun ExerciseTemplate.ready(equationText: String, solution: Rational, params: ParameterSet, seed: Long): GenerationOutcome =
+    GenerationOutcome.Ready(
+        ExerciseInstance(
+            templateId = id,
+            variable = variable,
+            equationText = equationText,
+            solution = solution,
             parameters = params,
             seed = seed,
         ),

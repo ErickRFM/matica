@@ -7,6 +7,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import mx.matica.math.MathEngine
 import mx.matica.math.ast.Expr
+import mx.matica.math.domain.Restriction
 import mx.matica.math.skills.SkillId
 import mx.matica.math.solve.SolveOutcome
 import mx.matica.math.verify.VerificationOutcome
@@ -48,16 +49,23 @@ class ExerciseGeneratorTest {
             (1L..12L).forEach { seed ->
                 val instance = ready(generator.generate(plantilla.id, seed), seed)
                 assertEquals(plantilla.skill, generator.skillOf(plantilla.id))
-                assertEquals(
-                    instance.solution,
-                    (engine.solve(instance.equationText) as SolveOutcome.Unique).value,
-                    "${instance.equationText} no resuelve en la respuesta guardada.",
-                )
-                assertIs<VerificationOutcome.Satisfies>(
-                    engine.verifySolution(instance.equationText, instance.variable, instance.solution),
-                    "Sustituir la respuesta guardada debe satisfacer: ${instance.equationText}",
-                )
-                assertTrue(engine.restrictions(instance.equationText).isEmpty(), "Ningún ejercicio nace proibido.")
+                if (plantilla.skill == SkillId.DOMAIN_RESTRICTIONS) {
+                    val restrictions = engine.restrictions(instance.equationText)
+                    val restriction = restrictions.filterIsInstance<Restriction.NotEqualTo>().single()
+                    assertEquals(instance.solution, restriction.excluded)
+                    assertEquals(instance.variable, restriction.variable)
+                } else {
+                    assertEquals(
+                        instance.solution,
+                        (engine.solve(instance.equationText) as SolveOutcome.Unique).value,
+                        "${instance.equationText} no resuelve en la respuesta guardada.",
+                    )
+                    assertIs<VerificationOutcome.Satisfies>(
+                        engine.verifySolution(instance.equationText, instance.variable, instance.solution),
+                        "Sustituir la respuesta guardada debe satisfacer: ${instance.equationText}",
+                    )
+                    assertTrue(engine.restrictions(instance.equationText).isEmpty(), "Ningún ejercicio nace proibido.")
+                }
             }
         }
     }
@@ -124,8 +132,8 @@ class ExerciseGeneratorTest {
     }
 
     @Test
-    fun todaPlantillaConstruyeDesdeUnaSolucionEntera() {
-        ExerciseTemplates.all.forEach { plantilla ->
+    fun todaPlantillaAlgebraicaConstruyeDesdeUnaSolucionEntera() {
+        ExerciseTemplates.all.filter { it.id != "decimal-fraction-conversion" }.forEach { plantilla ->
             (1L..6L).forEach { seed ->
                 val instance = ready(generator.generate(plantilla.id, seed), seed)
                 assertTrue(instance.solution.isInteger, "${plantilla.id} guardó una fracción: ${instance.solution}.")

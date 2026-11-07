@@ -126,7 +126,23 @@ class LinearTemplatesTest {
         val skills = ExerciseTemplates.all.map { it.skill }
         assertEquals(skills.size, skills.toSet().size, "Si dos plantillas entrenan la misma habilidad, el plan no distingue.")
         assertEquals(
-            listOf("distributive-linear", "fraction-linear", "integer-ops", "rectangle-perimeter", "two-step-linear"),
+            listOf(
+                "combining-like-terms",
+                "decimal-fraction-conversion",
+                "distributive-linear",
+                "domain-restrictions",
+                "equivalence",
+                "exponent-rules",
+                "fraction-linear",
+                "integer-ops",
+                "isolating-variable",
+                "order-of-operations",
+                "percentage-reasoning",
+                "rectangle-perimeter",
+                "sign-handling",
+                "solution-verification",
+                "two-step-linear",
+            ).sorted(),
             ids.sorted(),
         )
 
