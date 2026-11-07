@@ -80,6 +80,10 @@ grupos, alta de token de dispositivo con su `platform` y build sin URL que no to
   devuelve **404** porque el proceso desplegado es anterior a esta tanda (se comprobó con `curl` el
   2026-11-06; `/healthz`, `/readyz` y `/v1/topics` sí responden 200). El APK con la URL configurada
   abre el formulario real; la llamada falla en el servidor hasta fusionar y redesplegar.
+  **Superado el 2026-11-07**: el despliegue ya trae estas rutas (`GET /v1/auth/login` → 405) y su
+  base está conectada (`/readyz` → `ready`), pero el login sigue caído por otra razón — 503
+  `auth_unavailable` por falta de `MATICA_JWT_SECRET`. Medición y corrección en
+  `docs/evidence/despliegue-y-regresiones-2026-11-07.md`.
 - **Sincronización completa de extremo a extremo** (intento → SQLite → worker → Postgres): la cola y
   el contrato están probados por separado; el recorrido junto depende del despliegue.
 - **Corrida única de `connectedDebugAndroidTest`**: el agregado de AGP quedó **inestable en este

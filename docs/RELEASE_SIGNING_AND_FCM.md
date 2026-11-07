@@ -96,9 +96,55 @@ unión al grupo (`notifyOwner` corre aparte y atrapa sus errores).
 `render.yaml` ya declara las cinco primeras como `sync: false`, así que Render las pide al crear el
 servicio y no las guarda en Git.
 
+### 3.1 La única que falta para que el login responda (medido 2026-11-07)
+
+El proceso desplegado ya trae las rutas de cuentas y su base está conectada: `GET /v1/auth/login`
+responde **405** (la ruta existe; el 404 de la sesión anterior quedó superado) y `/readyz` responde
+**`ready`**, que es el ping real contra PostgreSQL. Aun así `POST /v1/auth/login`, `/v1/me`,
+`/v1/attempts`, `/v1/groups` y `/v1/symbolic` devuelven **503 `auth_unavailable`**, porque
+`AuthService` sólo se construye cuando hay usuarios **y** clave JWT
+(`backend/api/src/main/kotlin/mx/matica/backend/Services.kt:101`), y `jwtKey()` devuelve `null` si
+`MATICA_JWT_SECRET` está ausente o vacía (`BackendConfig.kt:26-33`).
+
+Es decir: **una variable, y el login deja de estar bloqueado.**
+
+```powershell
+# Windows, PowerShell: 48 bytes aleatorios en base64. No reutilizar un ejemplo público.
+$bytes = New-Object byte[] 48
+[System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+[Convert]::ToBase64String($bytes)
+```
+
+Cualquier generador vale (`openssl rand -base64 48` en Git Bash, 64 caracteres), siempre que el valor
+que pegues mida **al menos 32 caracteres**: el `require` del arranque cuenta los bytes UTF‑8 de la
+cadena tal como está en el entorno, no los bytes del secreto decodificado
+(`BackendConfig.kt:26-33`), así que un valor truncado aborta el proceso en vez de funcionar a medias
+y se ve en el log.
+
+Dónde se pega: **Render Dashboard → tu servicio `matica-api-staging` → Environment Variables →
+Add**, con el nombre exacto `MATICA_JWT_SECRET` y el valor en una sola línea. No va en `render.yaml`
+(esa clave ya está marcada `sync: false` precisamente para que el valor no viaje al repositorio) y no
+se sube en el commit. Tras guardar, Render reinicia el proceso y conviene verificar:
+
+```bash
+curl -s https://matica-api.onrender.com/readyz        # -> {"status":"ready"}
+curl -s -X POST -H 'Content-Type: application/json' \
+  -d '{"email":"no-existe-sonda@matica.invalid","password":"Nunca-Una-Contrasena-Real-1"}' \
+  https://matica-api.onrender.com/v1/auth/login
+# antes: {"code":"auth_unavailable",...}   después: {"code":"invalid_credentials",...}
+```
+
+El cambio de `auth_unavailable` a `invalid_credentials` es la señal de que la cuenta ya funciona sin
+necesidad de registrar un correo real en producción. Si se prefiere no tocar la base de Render, el
+orden inverso también vale: una base de staging y su `DATABASE_URL`, y dejar ésta para el final.
+
+Si además se rota el secreto, los tokens viejos dejan de validar de inmediato: la app guarda el JWT
+en preferencias privadas y, al recibir 401, cierra sesión sin borrar la cola de intentos pendiente.
+
 ## Lo que este documento no certifica
 
 - No se ha creado el keystore: los comandos son los que hay que ejecutar, no un resultado.
 - No se ha enviado ningún mensaje FCM: no hay proyecto Firebase ni token de dispositivo.
-- No se ha desplegado esta tanda en Render; el `/v1/auth/login` de producción sigue en 404 hasta el
-  merge y el redespliegue.
+- El despliegue de Render **sí** corre ya este backend (medido por `curl` el 2026-11-07), pero el
+  login real sigue sin ejecutarse desde el teléfono: `POST /v1/auth/login` responde 503 porque
+  `MATICA_JWT_SECRET` no está en el entorno. Ver **3.1**.
