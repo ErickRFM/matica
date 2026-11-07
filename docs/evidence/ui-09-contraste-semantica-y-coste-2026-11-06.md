@@ -182,10 +182,20 @@ el código actual pasa el test que escribí, no que el test detecte el defecto.
   individualmente, todas quedaron verdes y el total de 68 se compone de 14 corridas por clase, no de una
   sola pasada limpia. Un proceso que se cae y pasa a la segunda no es la misma garantía que una tanda
   seguida: queda anotado.
-- **CI en el PR apilado.** El trabajo va en `feat/bloque-3-ui-afinado` (tres commits sobre `769eaa0`) con
-  PR #12 contra esa rama, no contra `main`. `.github/workflows/ci.yml` dispara `pull_request` sólo con
-  base `main`, así que **el PR no recibe checks por sí solo**; se lanzó una corrida manual por
-  `workflow_dispatch` sobre la rama (`gh run 42343961778`). Sin esa corrida en verde no se fusiona nada, y
-  el verde de una corrida manual no es el mismo check que exige la protección de `main`.
-- Este documento certifica pruebas ejecutadas en un emulador local. No certifica operación en producción,
-  ni CI, ni que el PR esté fusionado.
+- **CI en el PR apilado.** El trabajo fue primero a `feat/bloque-3-ui-afinado` (tres commits sobre
+  `769eaa0`) con PR #12 contra `feat/bloque-3-geometria-y-teclado`, no contra `main`.
+  `.github/workflows/ci.yml` dispara `pull_request` sólo con base `main`, así que **ese PR no recibía
+  checks por sí solo**; se lanzó una corrida manual por `workflow_dispatch` sobre la rama
+  (`gh run 42343961778`). **Esa corrida terminó en `failure`**, y el fallo era real: en el commit que
+  se corrida (`fbbd856`), `MaticaFeedback.kt:110` declaraba `expect fun rememberMaticaFeedback` con
+  `actual` sólo en `jvmMain`, sin `actual` en `androidMain`, y `:design-system:compileAndroidMain`
+  reventó con `The 'expect' declaration ... has no 'actual' declaration`. El `actual` de Android llegó
+  después, con UI-12 (`62202ea`). Fusionado el PR #10 y con `main` integrado, el PR #12 se reorientó a
+  `main` y la punta actual (`d4d1b26`) sí tiene una corrida `pull_request` legítima
+  (`gh run 42344289338`). Localmente, `./gradlew :design-system:testAndroidHostTest --rerun-tasks` sobre
+  esa punta sale en verde (el `UP-TO-DATE` de una corrida anterior no contaba como prueba: hay que
+  forzar la recompilación para ver este error).
+  Sin el check del PR en verde no se fusiona nada, y el verde de una corrida manual no es el mismo check
+  que exige la protección de `main`.
+- Este documento certifica pruebas ejecutadas en un emulador local y la corrida `pull_request` del PR #12
+  citada arriba. No certifica operación en producción ni que el PR esté fusionado.
