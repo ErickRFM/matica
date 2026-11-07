@@ -137,6 +137,8 @@ object MaticaLevelPalette {
     fun pairOf(level: MasteryLevel, scheme: ColorScheme, semantic: MaticaSemanticColors): MaticaColorPair = when (level) {
         MasteryLevel.NOT_INTRODUCED ->
             MaticaColorPair(scheme.onSurfaceVariant, scheme.surfaceVariant, "habilidad sin introducir")
+        MasteryLevel.NOVICE ->
+            MaticaColorPair(scheme.onSurfaceVariant, scheme.surfaceVariant, "habilidad novata")
         MasteryLevel.DEVELOPING ->
             MaticaColorPair(semantic.onHighlightContainer, semantic.highlightContainer, "habilidad en desarrollo")
         MasteryLevel.PROFICIENT ->
@@ -307,18 +309,34 @@ private fun RouteChip(node: RouteNode, pair: MaticaColorPair, onClick: () -> Uni
 
     val isDecayed = node.retention < 0.6f && node.level != MasteryLevel.NOT_INTRODUCED && node.unlocked
 
+    // El chip completo es el botón, no sólo el medallón de 50 dp. Medido en el AVD con el
+    // `mergeDescendants` del `Column` y el `onClick` del `Surface` por separado, el nodo que llevaba
+    // el nombre no tenía acción y el que la tenía no tenía nombre: TalkBack anunciaba «botón, no
+    // escrito` y `hasClickAction() and hasContentDescription(…)` no encontraba nada que pulsar,
+    // mientras que tocar el rótulo —la mitad baja del chip, la que más se ve— no hacía nada.
+    val descripcion = buildString {
+        append("${node.label}. ${node.level.labelEs}.")
+        if (!node.unlocked) append(" Bloqueada: faltan prerrequisitos.")
+        if (node.suggested) append(" Sugerida para continuar.")
+        if (isDecayed) append(" Memoria en decaimiento: repaso sugerido.")
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 2.dp)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                enabled = node.unlocked,
+                onClickLabel = "Abrir $descripcion",
+            ) {
+                maticaFeedback.nodeClick()
+                onClick()
+            }
             .semantics(mergeDescendants = true) {
                 role = Role.Button
-                contentDescription = buildString {
-                    append("${node.label}. ${node.level.labelEs}.")
-                    if (!node.unlocked) append(" Bloqueada: faltan prerrequisitos.")
-                    if (node.suggested) append(" Sugerida para continuar.")
-                    if (isDecayed) append(" Memoria en decaimiento: repaso sugerido.")
-                }
+                contentDescription = descripcion
             },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -343,17 +361,11 @@ private fun RouteChip(node: RouteNode, pair: MaticaColorPair, onClick: () -> Uni
                 )
             }
 
-            // Cuerpo del nodo circular tipo piedra de salto
+            // Cuerpo del nodo circular tipo piedra de salto; lo interactivo es el chip completo.
             Surface(
-                onClick = {
-                    maticaFeedback.nodeClick()
-                    onClick()
-                },
-                enabled = node.unlocked,
                 shape = CircleShape,
                 color = if (isDecayed) pair.background.copy(alpha = 0.85f) else pair.background,
                 contentColor = pair.foreground,
-                interactionSource = interactionSource,
                 modifier = Modifier
                     .size(50.dp)
                     .graphicsLayer {
@@ -404,6 +416,7 @@ private fun RouteChip(node: RouteNode, pair: MaticaColorPair, onClick: () -> Uni
 /** El icono refuerza el nivel, nunca lo comunica solo: la etiqueta de texto siempre está presente. */
 private fun levelGlyph(level: MasteryLevel): MaticaIcon = when (level) {
     MasteryLevel.NOT_INTRODUCED -> MaticaIcon.LESSON
+    MasteryLevel.NOVICE -> MaticaIcon.LESSON
     MasteryLevel.DEVELOPING -> MaticaIcon.XP
     MasteryLevel.PROFICIENT -> MaticaIcon.CHECK
     MasteryLevel.FLUENT -> MaticaIcon.GEM

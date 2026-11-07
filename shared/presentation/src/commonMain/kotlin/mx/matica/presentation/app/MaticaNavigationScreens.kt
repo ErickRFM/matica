@@ -1102,6 +1102,7 @@ private fun LevelRow(skill: SkillId, level: MasteryLevel, detail: String) {
             MaticaGlyph(
                 icon = when (level) {
                     MasteryLevel.NOT_INTRODUCED -> MaticaIcon.LOCK
+                    MasteryLevel.NOVICE -> MaticaIcon.LESSON
                     MasteryLevel.DEVELOPING -> MaticaIcon.FORWARD
                     MasteryLevel.PROFICIENT -> MaticaIcon.CHECK
                     MasteryLevel.FLUENT -> MaticaIcon.GEM

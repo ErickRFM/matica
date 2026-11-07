@@ -91,6 +91,10 @@ internal class MaticaServices private constructor(
     val groups: GroupRepository?,
     val devices: DeviceTokenRepository?,
     val gamification: GamificationRepository?,
+    val classroom: ClassroomRepository?,
+    val telemetry: TelemetryRepository?,
+    val curriculumOta: CurriculumOtaService,
+    val stateSync: StateSyncService?,
     val databaseReady: () -> Boolean,
     val clock: Clock,
     val symbolic: SymbolicForwarder,
@@ -109,18 +113,37 @@ internal class MaticaServices private constructor(
     val authAvailable: Boolean get() = auth != null
 
     companion object {
-        fun production(config: BackendConfig, database: Database?): MaticaServices = MaticaServices(
-            config = config,
-            users = database?.let(::JdbcUserRepository),
-            attempts = database?.let(::JdbcAttemptRepository),
-            groups = database?.let(::JdbcGroupRepository),
-            devices = database?.let(::JdbcDeviceTokenRepository),
-            gamification = database?.let(::JdbcGamificationRepository),
-            databaseReady = { database?.ping() == true },
-            clock = Clock.systemUTC(),
-            symbolic = SymbolicForwarder(config.symbolicUrl, config.symbolicKey),
-            fcm = FcmSender.fromServiceAccount(config.fcmServiceAccount),
-        )
+        fun production(config: BackendConfig, database: Database?): MaticaServices {
+            val clock = Clock.systemUTC()
+            val users = database?.let(::JdbcUserRepository)
+            val attempts = database?.let(::JdbcAttemptRepository)
+            val groups = database?.let(::JdbcGroupRepository)
+            val devices = database?.let(::JdbcDeviceTokenRepository)
+            val gamification = database?.let(::JdbcGamificationRepository)
+            val classroom = database?.let(::JdbcClassroomRepository)
+            val telemetry = database?.let(::JdbcTelemetryRepository)
+            val curriculumOta = CurriculumOtaService(clock)
+            val stateSync = if (attempts != null) {
+                StateSyncService(attempts, gamification, classroom, clock)
+            } else null
+
+            return MaticaServices(
+                config = config,
+                users = users,
+                attempts = attempts,
+                groups = groups,
+                devices = devices,
+                gamification = gamification,
+                classroom = classroom,
+                telemetry = telemetry,
+                curriculumOta = curriculumOta,
+                stateSync = stateSync,
+                databaseReady = { database?.ping() == true },
+                clock = clock,
+                symbolic = SymbolicForwarder(config.symbolicUrl, config.symbolicKey),
+                fcm = FcmSender.fromServiceAccount(config.fcmServiceAccount),
+            )
+        }
 
         /** Repositorios en memoria: las pruebas de rutas no necesitan PostgreSQL. */
         fun forTests(
@@ -130,21 +153,33 @@ internal class MaticaServices private constructor(
             groups: GroupRepository,
             devices: DeviceTokenRepository,
             gamification: GamificationRepository? = null,
+            classroom: ClassroomRepository? = null,
+            telemetry: TelemetryRepository? = null,
+            curriculumOta: CurriculumOtaService? = null,
+            stateSync: StateSyncService? = null,
             databaseReady: () -> Boolean = { true },
             clock: Clock = Clock.systemUTC(),
             symbolic: SymbolicForwarder = SymbolicForwarder(null, null),
             fcm: FcmSender = FcmSender.disabled,
-        ): MaticaServices = MaticaServices(
-            config = config,
-            users = users,
-            attempts = attempts,
-            groups = groups,
-            devices = devices,
-            gamification = gamification,
-            databaseReady = databaseReady,
-            clock = clock,
-            symbolic = symbolic,
-            fcm = fcm,
-        )
+        ): MaticaServices {
+            val ota = curriculumOta ?: CurriculumOtaService(clock)
+            val sync = stateSync ?: StateSyncService(attempts, gamification, classroom, clock)
+            return MaticaServices(
+                config = config,
+                users = users,
+                attempts = attempts,
+                groups = groups,
+                devices = devices,
+                gamification = gamification,
+                classroom = classroom,
+                telemetry = telemetry,
+                curriculumOta = ota,
+                stateSync = sync,
+                databaseReady = databaseReady,
+                clock = clock,
+                symbolic = symbolic,
+                fcm = fcm,
+            )
+        }
     }
 }

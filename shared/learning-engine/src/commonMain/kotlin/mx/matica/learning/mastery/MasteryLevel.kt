@@ -24,6 +24,7 @@ data class SkillEvidence(
 
 enum class MasteryLevel(val id: String, val labelEs: String) {
     NOT_INTRODUCED("not-introduced", "Sin introducción"),
+    NOVICE("novice", "Novato"),
     DEVELOPING("developing", "En desarrollo"),
     PROFICIENT("proficient", "Competente"),
     FLUENT("fluent", "Fluido");
