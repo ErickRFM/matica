@@ -245,7 +245,7 @@ fun MathKeyButton(
  *
  * @param onInsert Invocado al presionar una tecla de símbolo o variable.
  * @param onDelete Invocado al presionar la tecla de retroceso (⌫).
- * @param onClear Opcional: invocado al presionar la tecla de borrar todo (C). Si no es nulo, se muestra la tecla.
+ * @param onClear Opcional: invocado al presionar la tecla de borrar todo (AC). Si no es nulo, se muestra la tecla.
  * @param modifier Modificador visual para posicionar la barra.
  * @param variable Símbolo de la incógnita del ejercicio (por defecto "x").
  * @param powerSymbol Símbolo de la potencia cuadrática (por defecto "²").

@@ -2,6 +2,8 @@ package mx.matica.presentation.app
 
 import androidx.compose.foundation.layout.Arrangement
 import mx.matica.presentation.components.MaticaConfetti
+import androidx.compose.runtime.LaunchedEffect
+import mx.matica.design.feedback.rememberMaticaFeedback
 import mx.matica.design.brand.MascotEmotion
 import mx.matica.design.brand.MaticaMascot
 import androidx.compose.ui.text.style.TextAlign
@@ -123,6 +125,7 @@ fun LessonPlayerScreen(skill: SkillId, lessonNumber: Int, session: MaticaSession
     }
 
     val plan = lesson.plan
+    val maticaFeedback = rememberMaticaFeedback()
     var workspace by rememberSaveable { mutableStateOf(plan.equationText) }
     var draft by rememberSaveable { mutableStateOf("") }
     var feedback by remember { mutableStateOf<Pair<String, String>?>(null) }
@@ -170,6 +173,7 @@ fun LessonPlayerScreen(skill: SkillId, lessonNumber: Int, session: MaticaSession
                             onClick = {
                                 selectedOptionIndex = index
                                 optionEvaluatedCorrect = null
+                                maticaFeedback.stepSelect()
                                 if (option.resultingExpression != null) {
                                     draft = option.resultingExpression
                                 }
@@ -195,9 +199,18 @@ fun LessonPlayerScreen(skill: SkillId, lessonNumber: Int, session: MaticaSession
                 error = rejection,
             )
             MathKeyboardBar(
-                onInsert = { symbol -> draft = appendMathSymbol(draft, symbol) },
-                onDelete = { draft = deleteLastMathSymbol(draft) },
-                onClear = { draft = "" },
+                onInsert = { symbol ->
+                    draft = appendMathSymbol(draft, symbol)
+                    maticaFeedback.keyTap()
+                },
+                onDelete = {
+                    draft = deleteLastMathSymbol(draft)
+                    maticaFeedback.keyTap()
+                },
+                onClear = {
+                    draft = ""
+                    maticaFeedback.keyTap()
+                },
                 variable = plan.variable,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.sm)) {
@@ -220,6 +233,11 @@ fun LessonPlayerScreen(skill: SkillId, lessonNumber: Int, session: MaticaSession
                             feedback = title to detail
                             rejection = verdictReason(verdict)
                             val isValid = verdict is mx.matica.math.analysis.StepVerdict.Valid
+                            if (isValid) {
+                                maticaFeedback.correct()
+                            } else {
+                                maticaFeedback.incorrect()
+                            }
                             if (chosenOption != null) {
                                 optionEvaluatedCorrect = isValid
                             }
@@ -233,9 +251,11 @@ fun LessonPlayerScreen(skill: SkillId, lessonNumber: Int, session: MaticaSession
                             rejection = null
                             if (chosenOption.isCorrect) {
                                 optionEvaluatedCorrect = true
+                                maticaFeedback.correct()
                                 feedback = "¡Paso correcto!" to "Excelente primer paso: ${chosenOption.text}."
                             } else {
                                 optionEvaluatedCorrect = false
+                                maticaFeedback.incorrect()
                                 feedback = "Paso incorrecto" to "Ese no es el primer paso adecuado para esta ecuación. Intenta con otra operación."
                             }
                         }
@@ -258,7 +278,12 @@ fun LessonPlayerScreen(skill: SkillId, lessonNumber: Int, session: MaticaSession
             Text("Respuesta final", style = MaterialTheme.typography.titleMedium)
             AnswerRow(plan = plan, session = session) { outcome, proposal ->
                 feedback = answerMessage(outcome, proposal)
-                if (outcome is VerificationOutcome.Satisfies) navigator.go(MaticaRoute.LessonComplete(skill, lessonNumber))
+                if (outcome is VerificationOutcome.Satisfies) {
+                    maticaFeedback.correct()
+                    navigator.go(MaticaRoute.LessonComplete(skill, lessonNumber))
+                } else {
+                    maticaFeedback.incorrect()
+                }
             }
         }
 
@@ -466,6 +491,10 @@ fun AttemptReviewScreen(skill: SkillId, lessonNumber: Int, attemptNumber: Int, s
 
 @Composable
 fun LessonCompleteScreen(skill: SkillId, lessonNumber: Int, session: MaticaSession, navigator: MaticaNavigator) {
+    val maticaFeedback = rememberMaticaFeedback()
+    LaunchedEffect(Unit) {
+        maticaFeedback.victory()
+    }
     val recordings = session.masteryChanges.takeLast(3)
     MaticaScreen(
         title = "¡EXCELENTE!",

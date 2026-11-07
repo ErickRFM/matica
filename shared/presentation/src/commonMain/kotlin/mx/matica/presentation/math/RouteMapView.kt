@@ -57,6 +57,7 @@ import mx.matica.design.theme.LocalMaticaSemanticColors
 import mx.matica.design.theme.MaticaColorPair
 import mx.matica.design.theme.MaticaSemanticColors
 import mx.matica.design.tokens.MaticaSpacing
+import mx.matica.design.feedback.rememberMaticaFeedback
 import mx.matica.learning.mastery.MasteryLevel
 import mx.matica.learning.skills.SkillGraph
 import mx.matica.math.skills.SkillId
@@ -269,6 +270,7 @@ fun RouteMapView(
 
 @Composable
 private fun RouteChip(node: RouteNode, pair: MaticaColorPair, onClick: () -> Unit) {
+    val maticaFeedback = rememberMaticaFeedback()
     val motion = LocalMotionStyle.current
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
@@ -337,7 +339,10 @@ private fun RouteChip(node: RouteNode, pair: MaticaColorPair, onClick: () -> Uni
 
             // Cuerpo del nodo circular tipo piedra de salto
             Surface(
-                onClick = onClick,
+                onClick = {
+                    maticaFeedback.nodeClick()
+                    onClick()
+                },
                 enabled = node.unlocked,
                 shape = CircleShape,
                 color = pair.background,

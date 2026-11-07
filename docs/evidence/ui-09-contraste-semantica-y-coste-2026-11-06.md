@@ -182,5 +182,10 @@ el código actual pasa el test que escribí, no que el test detecte el defecto.
   individualmente, todas quedaron verdes y el total de 68 se compone de 14 corridas por clase, no de una
   sola pasada limpia. Un proceso que se cae y pasa a la segunda no es la misma garantía que una tanda
   seguida: queda anotado.
+- **CI en el PR apilado.** El trabajo va en `feat/bloque-3-ui-afinado` (tres commits sobre `769eaa0`) con
+  PR #12 contra esa rama, no contra `main`. `.github/workflows/ci.yml` dispara `pull_request` sólo con
+  base `main`, así que **el PR no recibe checks por sí solo**; se lanzó una corrida manual por
+  `workflow_dispatch` sobre la rama (`gh run 42343961778`). Sin esa corrida en verde no se fusiona nada, y
+  el verde de una corrida manual no es el mismo check que exige la protección de `main`.
 - Este documento certifica pruebas ejecutadas en un emulador local. No certifica operación en producción,
   ni CI, ni que el PR esté fusionado.
