@@ -13,3 +13,20 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false
+      # Firma de los tokens de sesión: 32 bytes aleatorios, mínimo 32 caracteres. Se genera una vez
+      # con `openssl rand -base64 48` y se pega en Render; rotarla cierra todas las sesiones.
+      - key: MATICA_JWT_SECRET
+        sync: false
+      # Proxy SymPy sólo entre servidores. La clave NUNCA viaja al APK.
+      - key: MATICA_SYMBOLIC_URL
+        sync: false
+      - key: MATICA_SYMBOLIC_API_KEY
+        sync: false
+      # Cuenta de servicio de Firebase (JSON completo en una sola variable). Sin ella, el aviso al
+      # docente del aula simplemente no se envía y el resto del servicio sigue igual.
+      - key: MATICA_FCM_SERVICE_ACCOUNT
+        sync: false
+      # Flyway aplica las migraciones al arrancar. Sólo se pone en false para un arranque de
+      # emergencia sin tocar el esquema.
+      - key: MATICA_MIGRATE_ON_START
+        value: "true"

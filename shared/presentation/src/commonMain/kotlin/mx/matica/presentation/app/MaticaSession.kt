@@ -3,6 +3,9 @@ package mx.matica.presentation.app
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import kotlin.coroutines.cancellation.CancellationException
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 import kotlinx.datetime.LocalDate
 import mx.matica.exercises.ExerciseGenerator
 import mx.matica.exercises.ExerciseTemplates
@@ -63,6 +66,7 @@ class MaticaSession(
     val graph: SkillGraph = DefaultCurriculum.graph,
     var today: LocalDate = LocalDate(2026, 11, 5),
     private val connectionProbe: suspend () -> Boolean = { false },
+    private val account: MaticaAccountGateway? = null,
 ) {
     var profile: LearnerProfile by mutableStateOf(LearnerProfile.EMPTY)
         private set
@@ -100,15 +104,186 @@ class MaticaSession(
         message = "Ajustes actualizados: ${settings.themeMode}."
     }
 
+    /**
+     * Mientras la sonda del servidor está en vuelo. El botón de Ajustes y la pantalla necesitan este
+     * estado porque el estado de `MaticaViewState.Loading` sólo es honesto si algo de verdad tarda:
+     * la sonada tarda hasta 3.500 ms y sin este indicador la pantalla se quedaba quieta dando a
+     * entender que la comprobación no había empezado.
+     */
+    var checkingConnection: Boolean by mutableStateOf(false)
+        private set
+
     fun setConnection(connected: Boolean) {
         offline = !connected
     }
 
     /** Sólo se muestra en línea cuando un servidor real responde. No hay modo simulado en Ajustes. */
     suspend fun refreshConnection() {
-        val connected = try { connectionProbe() } catch (_: Exception) { false }
-        offline = !connected
-        message = if (connected) "Servidor de Mática disponible." else "Sin servidor disponible; puedes practicar sin conexión."
+        checkingConnection = true
+        try {
+            val connected = try { connectionProbe() } catch (_: Exception) { false }
+            offline = !connected
+            message =
+                if (connected) "Servidor de Mática disponible." else "Sin servidor disponible; puedes practicar sin conexión."
+        } finally {
+            checkingConnection = false
+        }
+    }
+
+    // --- Cuenta y sincronización -----------------------------------------------------
+
+    /** `false` si el APK se compiló sin URL de servidor; la interfaz lo dice en vez de fingir. */
+    val accountAvailable: Boolean get() = account != null
+
+    var accountIdentity: AccountIdentity? by mutableStateOf(account?.restore())
+        private set
+
+    var authBusy: Boolean by mutableStateOf(false)
+        private set
+
+    var authError: String? by mutableStateOf(null)
+        private set
+
+    /** Intentos guardados en el teléfono que aún no llegaron al servidor. */
+    var pendingSync: Int by mutableStateOf(account?.pendingAttempts() ?: 0)
+        private set
+
+    var classroomBusy: Boolean by mutableStateOf(false)
+        private set
+
+    var classroomMessage: String? by mutableStateOf(null)
+        private set
+
+    var classroomGroups: List<ClassroomGroup> by mutableStateOf(emptyList())
+        private set
+
+    fun clearAuthError() {
+        authError = null
+    }
+
+    suspend fun signIn(email: String, password: String): Boolean =
+        authenticate(email, password) { login(email, password) }
+
+    suspend fun createAccount(email: String, password: String, displayName: String): Boolean =
+        authenticate(email, password) { register(email, password, displayName) }
+
+    private suspend fun authenticate(
+        email: String,
+        password: String,
+        request: suspend MaticaAccountGateway.() -> AccountResult,
+    ): Boolean {
+        val gateway = account
+        if (gateway == null) {
+            authError = "Esta versión no incluye el servicio de cuentas."
+            return false
+        }
+        if (email.isBlank() || password.isEmpty()) {
+            authError = "Escribe tu correo y tu contraseña."
+            return false
+        }
+        if (authBusy) return false
+        authBusy = true
+        authError = null
+        return try {
+            when (val result = gateway.request()) {
+                is AccountResult.Success -> {
+                    accountIdentity = result.identity
+                    pendingSync = gateway.pendingAttempts()
+                    message = "Sesión iniciada: ${result.identity.email}."
+                    true
+                }
+
+                is AccountResult.Failure -> {
+                    authError = result.message
+                    false
+                }
+            }
+        } catch (error: Exception) {
+            if (error is CancellationException) throw error
+            authError = "No se pudo completar la conexión. Revisa tu red e inténtalo de nuevo."
+            false
+        } finally {
+            authBusy = false
+        }
+    }
+
+    fun signOut() {
+        account?.signOut()
+        accountIdentity = null
+        authError = null
+        classroomGroups = emptyList()
+        classroomMessage = null
+        pendingSync = 0
+        message = "Sesión cerrada. Tu práctica local sigue en este teléfono."
+    }
+
+    suspend fun loadClassrooms() {
+        val gateway = account ?: return
+        if (accountIdentity == null) return
+        classroomBusy = true
+        classroomMessage = null
+        try {
+            classroomGroups = gateway.groups()
+        } catch (error: Exception) {
+            if (error is CancellationException) throw error
+            classroomMessage = "No se pudo leer el aula. Revisa la conexión."
+        } finally {
+            classroomBusy = false
+        }
+    }
+
+    suspend fun joinClassroom(code: String): Boolean = classroomAction(
+        block = { joinGroup(code) },
+        success = { group -> "Te uniste a ${group.name}." },
+    )
+
+    suspend fun createClassroom(name: String): Boolean = classroomAction(
+        block = { createGroup(name) },
+        success = { group -> "Grupo creado. Código de invitación: ${group.inviteCode ?: "no disponible"}." },
+    )
+
+    /** Comparte la mecánica de espera y mensaje; devuelve `true` cuando la acción salió bien. */
+    private suspend fun classroomAction(
+        block: suspend MaticaAccountGateway.() -> GroupResult,
+        success: (ClassroomGroup) -> String,
+    ): Boolean {
+        val gateway = account ?: return false
+        if (accountIdentity == null) {
+            classroomMessage = "Entra a tu cuenta para usar el aula."
+            return false
+        }
+        if (classroomBusy) return false
+        classroomBusy = true
+        classroomMessage = null
+        return try {
+            when (val result = gateway.block()) {
+                is GroupResult.Success -> {
+                    classroomGroups = gateway.groups()
+                    classroomMessage = success(result.group)
+                    true
+                }
+
+                is GroupResult.Failure -> {
+                    classroomMessage = result.message
+                    false
+                }
+            }
+        } catch (error: Exception) {
+            if (error is CancellationException) throw error
+            classroomMessage = "No se pudo hablar con el aula. Revisa la conexión."
+            false
+        } finally {
+            classroomBusy = false
+        }
+    }
+
+    fun requestSync() {
+        account?.requestSync()
+        pendingSync = account?.pendingAttempts() ?: 0
+    }
+
+    fun refreshSyncState() {
+        pendingSync = account?.pendingAttempts() ?: 0
     }
 
     // --- Diagnóstico ---------------------------------------------------------------
@@ -227,6 +402,7 @@ class MaticaSession(
             award(evidence.quality)
             recomputeStreak()
         }
+        enqueueAttempt(plan, before, after, verdict.wireName(), usedHint || usedHintOf(plan))
         return verdict
     }
 
@@ -254,6 +430,12 @@ class MaticaSession(
             award(quality)
             recomputeStreak()
         }
+        val wireVerdict = when (outcome) {
+            is VerificationOutcome.Satisfies -> "valid"
+            is VerificationOutcome.Blocked -> "indeterminate"
+            else -> "invalid"
+        }
+        enqueueAttempt(plan, plan.equationText, proposal.toString(), wireVerdict, usedHintOf(plan))
         return outcome
     }
 
@@ -320,6 +502,45 @@ class MaticaSession(
     private fun recomputeStreak() {
         val days = profile.progress.values.flatMap { progress -> progress.window.map { it.occurredOn } }.toSet()
         streak = days.size
+    }
+
+    /**
+     * El intento se guarda aunque el servidor esté caído: la cola es local y el worker la vacía
+     * después. Sin cuenta no hay cola, igual que no hay perfil remoto.
+     */
+    @OptIn(ExperimentalUuidApi::class)
+    private fun enqueueAttempt(
+        plan: ExerciseRenderPlan,
+        before: String,
+        after: String,
+        verdict: String,
+        usedHint: Boolean,
+    ) {
+        val gateway = account ?: return
+        if (accountIdentity == null) return
+        if (before.isBlank() || after.isBlank()) return
+        val skill = skillOf(plan) ?: return
+        val attempt = PendingAttempt(
+            id = Uuid.random().toString(),
+            skillId = skill.id,
+            exerciseId = plan.templateId,
+            before = before.take(500),
+            after = after.take(500),
+            verdict = verdict,
+            usedHint = usedHint,
+        )
+        pendingSync = try {
+            gateway.enqueueAttempt(attempt)
+        } catch (_: Exception) {
+            pendingSync
+        }
+    }
+
+    private fun StepVerdict.wireName(): String = when (this) {
+        is StepVerdict.Valid -> "valid"
+        is StepVerdict.Invalid -> "invalid"
+        is StepVerdict.Indeterminate -> "indeterminate"
+        is StepVerdict.SyntaxProblem -> "syntax"
     }
 
     companion object {
