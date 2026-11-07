@@ -2,6 +2,7 @@ package mx.matica.presentation.math
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,6 +23,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathMeasure
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -31,6 +33,7 @@ import mx.matica.design.motion.LocalMotionStyle
 import mx.matica.design.motion.MaticaMotion
 import mx.matica.design.tokens.MaticaSpacing
 import mx.matica.math.numeric.Rational
+import kotlin.math.abs
 
 /** Punto muestreado del plano: ambos componentes siguen exactos hasta el dibujo. */
 data class PlotPoint(val x: Rational, val y: Rational)
@@ -135,6 +138,16 @@ fun plotRevealKey(series: PlotSeries): PlotRevealKey {
 }
 
 /**
+ * X que pide un arrastre sobre el plano: la fracción del ancho se traduce al candidato más cercano
+ * dentro de la ventana dibujada. El punto nunca queda en una coordenada intermedia inventada.
+ */
+fun trackerXAt(fraction: Float, xFrom: Rational, xTo: Rational, candidates: List<Rational>): Rational? {
+    if (candidates.isEmpty()) return null
+    val clamped = fraction.coerceIn(0f, 1f)
+    return candidates.minByOrNull { abs(positionOf(it, xFrom, xTo) - clamped) }
+}
+
+/**
  * Tramos visibles de la serie, ya en píxeles del canvas. La medición ocurre fuera de la fase de
  * dibujo porque `PathMeasure.setPath` muta lo que mide y Compose puede volver a ejecutar `draw`
  * cuando quiera. Con `progress` en 1 devuelve la curva completa.
@@ -161,6 +174,10 @@ internal fun plotVisibleSegments(series: PlotSeries, sizePx: IntSize, progress: 
 /**
  * Plano cartesiano con el trazo progresivo: la curva se dibuja sola de izquierda a derecha, que es
  * el orden en que se lee una función. Con movimiento reducido aparece completa.
+ *
+ * Con `trackerY` además hay un punto arrastrable sobre la recta: el dedo sólo mueve la coordenada
+ * horizontal, enganchada a un candidato exacto, y la vertical sale de la propia función. Así el
+ * punto no puede caerse de la recta ni parar en un valor que el motor no sepa nombrar.
  */
 @Composable
 fun CartesianGraphView(
@@ -171,6 +188,12 @@ fun CartesianGraphView(
     solutionMarkers: List<Rational> = emptyList(),
     xFrom: Rational = Rational.ZERO,
     xTo: Rational = Rational.ONE,
+    yFrom: Rational = Rational.ZERO,
+    yTo: Rational = Rational.ONE,
+    trackerY: ((Rational) -> Rational)? = null,
+    trackerX: Rational? = null,
+    trackerCandidates: List<Rational> = emptyList(),
+    onTrackerXChange: (Rational) -> Unit = {},
 ) {
     val motion = LocalMotionStyle.current
     val draw = remember { Animatable(if (motion.reduced) 1f else 0f) }
@@ -185,6 +208,7 @@ fun CartesianGraphView(
     val tracedSegments = remember(series, canvasSize, draw.value) {
         plotVisibleSegments(series, canvasSize, draw.value)
     }
+    val tracked = trackerY?.let { function -> trackerX?.let { x -> x to function(x) } }
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -194,7 +218,17 @@ fun CartesianGraphView(
             .semantics {
                 contentDescription =
                     "Gráfica en el plano de $axisLabelX contra $axisLabelY, con ${series.segments.size} " +
-                        "trazos continuos y ${series.gaps + series.outOfRange} cortes."
+                        "trazos continuos y ${series.gaps + series.outOfRange} cortes." +
+                        (tracked?.let { " Punto en la recta: $axisLabelX = ${it.first}, $axisLabelY = ${it.second}." } ?: "")
+            }
+            .pointerInput(trackerCandidates, xFrom, xTo) {
+                if (trackerY == null || trackerCandidates.isEmpty()) return@pointerInput
+                detectHorizontalDragGestures { change, _ ->
+                    val width = size.width
+                    if (width <= 0) return@detectHorizontalDragGestures
+                    trackerXAt(change.position.x / width.toFloat(), xFrom, xTo, trackerCandidates)
+                        ?.let(onTrackerXChange)
+                }
             },
     ) {
         Canvas(modifier = Modifier.fillMaxSize().onSizeChanged { canvasSize = it }) {
@@ -210,6 +244,18 @@ fun CartesianGraphView(
                 val x = size.width * positionOf(solution, xFrom, xTo)
                 drawCircle(color = markerColor, radius = 6.dp.toPx(), center = Offset(x, horizontal))
             }
+            tracked?.let { point ->
+                drawCircle(
+                    color = lineColor,
+                    radius = 9.dp.toPx(),
+                    center = Offset(
+                        size.width * positionOf(point.first, xFrom, xTo),
+                        // El eje vertical está invertido en píxeles: invertir los extremos del
+                        // intervalo es la única manera de que el punto caiga sobre la recta dibujada.
+                        size.height * positionOf(point.second, yTo, yFrom),
+                    ),
+                )
+            }
         }
         Text(
             text = axisLabelX,
@@ -223,5 +269,13 @@ fun CartesianGraphView(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.align(Alignment.TopStart).padding(MaticaSpacing.xs),
         )
+        tracked?.let { point ->
+            Text(
+                text = "$axisLabelX = ${point.first} · $axisLabelY = ${point.second}",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.align(Alignment.TopEnd).padding(MaticaSpacing.xs),
+            )
+        }
     }
 }

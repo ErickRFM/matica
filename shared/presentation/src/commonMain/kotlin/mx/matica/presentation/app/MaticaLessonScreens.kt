@@ -36,6 +36,8 @@ import mx.matica.presentation.math.EquationView
 import mx.matica.presentation.math.FractionStrip
 import mx.matica.presentation.math.FractionView
 import mx.matica.presentation.math.NumberLineView
+import mx.matica.presentation.math.RectangleFigureView
+import mx.matica.presentation.math.figureCandidates
 import mx.matica.presentation.math.nearestTick
 import mx.matica.presentation.route.MaticaNavigator
 import mx.matica.presentation.route.MaticaRoute
@@ -443,6 +445,38 @@ private fun ExerciseBody(
         EquationView(text = plan.equationText, variable = plan.variable)
     }
 
+    // La figura va antes que los procedimientos: es el problema dibujado, y sus medidas salen de la
+    // propia ecuación. Si la ecuación no se lee como rectángulo, `figure` es null y no hay sección.
+    val figure = plan.figure?.takeIf { plan.hasGeometry }
+    if (figure != null) {
+        var sideChoice by rememberSaveable { mutableStateOf("") }
+        val hypothesis = parseNumber(session.math, sideChoice) ?: plan.solution
+        val candidates = figureCandidates(plan.numberLine)
+        val reached = figure.totalAt(hypothesis)
+        MaticaSection("Figura: ${figure.totalLabelEs} dibujado") {
+            MaticaCard {
+                RectangleFigureView(
+                    figure = figure,
+                    candidates = candidates,
+                    hypothesis = hypothesis,
+                    onHypothesisChange = { value -> sideChoice = value.toString() },
+                )
+                Text(
+                    text = "Se pide ${figure.goalEs} · con lado $hypothesis tienes ${figure.totalLabelEs} $reached",
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = MaticaSpacing.sm),
+                )
+                MaticaCaption(
+                    if (reached == figure.total) {
+                        "Coincide: ese lado es el que pide la ecuación."
+                    } else {
+                        "Todavía no: el perímetro y el área se suman con los lados exactos de la ecuación, " +
+                            "así que el dibujo no presta ningún número."
+                    },
+                )
+            }
+        }
+    }
+
     if (ExerciseSlot.NUMBER_LINE in plan.slots) {
         MaticaSection("Recta: dónde cae la solución") {
             MaticaCard {
@@ -461,18 +495,30 @@ private fun ExerciseBody(
 
     if (plan.hasGraph) {
         val window = graphWindow(plan)
+        val trackerLine = plan.lines.first()
         MaticaSection("Plano: las dos rectas se cortan en la solución") {
             CartesianGraphView(
-                series = seriesOf(plan.lines.first(), window.xFrom, window.xTo, window.yFrom, window.yTo),
+                series = seriesOf(trackerLine, window.xFrom, window.xTo, window.yFrom, window.yTo),
                 axisLabelX = plan.variable,
                 axisLabelY = "y",
                 solutionMarkers = listOf(plan.solution),
                 xFrom = window.xFrom,
                 xTo = window.xTo,
+                yFrom = window.yFrom,
+                yTo = window.yTo,
+                trackerY = { value -> trackerLine.slope * value + trackerLine.intercept },
+                // El punto del plano no tiene una conjetura propia: es la misma `selected` de la recta,
+                // así que las flechas —únicos controles alcanzables con teclado— también mueven el punto.
+                // Con estado separado el plano sólo se podía cambiar con el dedo.
+                trackerX = selected,
+                trackerCandidates = plan.numberLine.orderedTicks,
+                onTrackerXChange = { value -> picked = value.toString() },
             )
             MaticaCaption(
-                "Sólo se dibuja el lado izquierdo. La otra recta es ${plan.lines.last().slope}·${plan.variable} + " +
-                    "${plan.lines.last().intercept}: si no son rectas, el plano se omite en lugar de fingirse.",
+                "Sólo se dibuja el lado izquierdo. La otra recta es ${trackerLine.slope}·${plan.variable} + " +
+                    "${plan.lines.last().intercept}: si no son rectas, el plano se omite en lugar de fingirse. " +
+                    "Arrastra el plano para mover el punto: se queda en la recta y en una marca exacta, y es la " +
+                    "misma marca que mueve la recta numérica.",
             )
         }
     } else {
