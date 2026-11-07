@@ -18,8 +18,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.unit.dp
 import mx.matica.design.motion.LocalMotionStyle
 import mx.matica.design.motion.MaticaMotion
@@ -27,25 +29,41 @@ import mx.matica.design.theme.MaticaColorPair
 import mx.matica.design.tokens.MaticaPalette
 import mx.matica.design.tokens.MaticaShapes
 import mx.matica.design.tokens.MaticaSpacing
+import mx.matica.learning.text.pluralEs
 
-/** Chip de recuento animado: el número sube solo, sin redibujar la fila entera. */
+/**
+ * Chip de recuento animado: el número sube solo, sin redibujar la fila entera.
+ *
+ * La unidad se escribe en las dos formas porque el contador se anima: con racha de 1 el número que
+ * se pinta es «1», y «1 días» se lee como un fallo del motor cuando el único defecto está en la
+ * etiqueta. `XP` no tiene plural porque no lo necesita; `días` y `gemas` sí.
+ */
 @Composable
 fun MaticaCountChip(
     value: Int,
-    suffix: String,
+    unit: String,
     glyph: MaticaIcon,
     pair: MaticaColorPair,
     modifier: Modifier = Modifier,
+    pluralUnit: String = unit,
 ) {
     val motion = LocalMotionStyle.current
     val animated by animateIntAsState(
         targetValue = value,
-        animationSpec = if (motion.reduced) snap() else MaticaMotion.popSpec(motion),
+        animationSpec = if (motion.reduced) snap() else MaticaMotion.contentSpec(motion),
         label = "matica-count",
     )
     val shape = MaticaShapes.pill
     Row(
+        // `clearAndSetSemantics` y no `semantics`: el número que se pinta es el interpolado, y un
+        // lector de pantalla habría leído los veintitantos cuadros del salto («3 XP», «11 XP»,
+        // «24 XP»…) antes del valor de verdad. Aquí sólo expone el objetivo final, y en un región
+        // viva para que el cambio se anuncie cuando ocurre.
         modifier = modifier
+            .clearAndSetSemantics {
+                contentDescription = "$value ${pluralEs(value, unit, pluralUnit)}"
+                liveRegion = LiveRegionMode.Polite
+            }
             .background(pair.background, shape)
             .padding(horizontal = MaticaSpacing.md, vertical = MaticaSpacing.xs),
         horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.xs),
@@ -53,7 +71,7 @@ fun MaticaCountChip(
     ) {
         Box(Modifier.size(18.dp)) { MaticaGlyph(icon = glyph, tint = pair.foreground, strokeWidthDp = 2.2f) }
         Text(
-            text = "$animated $suffix",
+            text = "$animated ${pluralEs(animated, unit, pluralUnit)}",
             style = MaterialTheme.typography.labelLarge,
             color = pair.foreground,
         )

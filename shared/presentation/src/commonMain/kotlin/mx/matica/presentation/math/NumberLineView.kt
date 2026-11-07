@@ -28,6 +28,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import mx.matica.design.motion.LocalMotionStyle
 import mx.matica.design.motion.MaticaMotion
+import mx.matica.design.theme.LocalMaticaSemanticColors
 import mx.matica.design.tokens.MaticaLayout
 import mx.matica.design.tokens.MaticaSpacing
 import mx.matica.math.numeric.Rational
@@ -75,10 +76,27 @@ internal fun Rational.approximate(): Double = numerator.doubleValue() / denomina
  * Valor pedido por un arrastre: el dedo se traduce a la marca más cercana, nunca a un número
  * intermedio inventado.
  */
-fun valueAt(fraction: Float, model: NumberLineModel): Rational {
-    val clamped = fraction.coerceIn(0f, 1f)
-    return model.orderedTicks.minByOrNull { abs(positionOf(it, model.from, model.to) - clamped) }
-        ?: model.orderedTicks.first()
+fun valueAt(fraction: Float, model: NumberLineModel): Rational =
+    nearestCandidateAt(fraction, model.from, model.to, model.orderedTicks) ?: model.orderedTicks.first()
+
+/**
+ * Marca más cercana a la fracción arrastrada sobre el intervalo dibujado. Las tres superficies
+ * interactivas —recta, plano y figura— salen de aquí; antes cada una tenía su copia y la de la
+ * figura medía la distancia en unidades de valor mientras las otras dos lo hacían en fracción del
+ * ancho, de modo que el mismo gesto podía engancharse en marcas distintas.
+ *
+ * La distancia se compara en doble porque sólo sirve para ordenar candidatos; lo devuelto es la
+ * marca exacta. La fracción no se recorta a `0..1`: `positionOf` ya acota la posición de cada marca,
+ * y contra posiciones acotadas el candidato más cercano es el mismo con la fracción dentro o fuera
+ * del borde.
+ */
+internal fun nearestCandidateAt(
+    fraction: Float,
+    from: Rational,
+    to: Rational,
+    candidates: List<Rational>,
+): Rational? {
+    return candidates.minByOrNull { abs(positionOf(it, from, to) - fraction) }
 }
 
 /** Marca que cae más cerca del primer cuarto del intervalo; la fracción del rango que se muestra en pantalla. */
@@ -111,7 +129,7 @@ fun NumberLineView(
     val marker = remember { Animatable(target ?: 0f) }
     LaunchedEffect(target, motion.reduced) {
         val position = target ?: return@LaunchedEffect
-        if (motion.reduced) marker.snapTo(position) else marker.animateTo(position, MaticaMotion.popSpec(motion))
+        if (motion.reduced) marker.snapTo(position) else marker.animateTo(position, MaticaMotion.contentSpec(motion))
     }
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
@@ -194,7 +212,7 @@ fun NumberLineView(
             Text(
                 text = selected?.toString() ?: "Sin marcador",
                 style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary,
+                color = LocalMaticaSemanticColors.current.accentText,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(horizontal = MaticaSpacing.md),
             )

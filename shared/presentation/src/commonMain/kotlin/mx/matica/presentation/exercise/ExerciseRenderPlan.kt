@@ -11,6 +11,7 @@ import mx.matica.math.poly.Normalizer
 import mx.matica.math.poly.PolyOutcome
 import mx.matica.math.printer.ExprPrinter
 import mx.matica.math.verify.VerificationOutcome
+import mx.matica.presentation.components.StepOption
 import mx.matica.presentation.math.FractionViewModel
 import mx.matica.presentation.math.NumberLineModel
 import mx.matica.presentation.math.RectangleFigure
@@ -51,6 +52,7 @@ data class ExerciseRenderPlan(
     val verification: List<String>,
     val verified: Boolean,
     val figure: RectangleFigure?,
+    val stepOptions: List<StepOption> = emptyList(),
 ) {
     /** Sin dos rectas reales no hay gráfica honesta que mostrar: la pantalla omite el plano. */
     val hasGraph: Boolean get() = ExerciseSlot.GRAPH in slots && lines.size == 2
@@ -165,6 +167,7 @@ fun renderPlan(instance: ExerciseInstance, engine: MathEngine = MathEngine()): E
         verified = engine.verifySolution(instance.equationText, instance.variable, instance.solution)
             is VerificationOutcome.Satisfies,
         figure = rectangleFigureOf(equation, instance.variable, instance.solution),
+        stepOptions = buildStepOptions(equation, instance.variable, instance.templateId),
     )
 }
 
@@ -239,3 +242,135 @@ internal fun verificationLines(equals: Expr.Equals, variable: String, value: Rat
 }
 
 private fun render(value: Rational): String = ExprPrinter.render(Expr.Const(value))
+
+private fun exprToLong(expr: Expr): Long? = when (expr) {
+    is Expr.Const -> expr.value.toLongOrNull()
+    is Expr.Neg -> exprToLong(expr.operand)?.let { -it }
+    else -> null
+}
+
+/** Genera las opciones de primer paso para el andamiaje del ejercicio (Figma Screen 4). */
+fun buildStepOptions(plan: ExerciseRenderPlan, engine: MathEngine = MathEngine()): List<StepOption> {
+    if (plan.stepOptions.isNotEmpty()) return plan.stepOptions
+    val parsed = engine.parseOrNull(plan.equationText) as? Expr.Equals ?: return fallbackStepOptions()
+    return buildStepOptions(parsed, plan.variable, plan.templateId)
+}
+
+fun buildStepOptions(equation: Expr.Equals, variable: String, templateId: String = ""): List<StepOption> {
+    return distributiveStepOptions(equation, variable)
+        ?: twoStepStepOptions(equation, variable)
+        ?: fractionStepOptions(equation, variable)
+        ?: fallbackStepOptions()
+}
+
+internal fun distributiveStepOptions(equation: Expr.Equals, variable: String): List<StepOption>? {
+    val (exprWithParen, otherSide) = when {
+        equation.left is Expr.Product -> equation.left as Expr.Product to equation.right
+        equation.right is Expr.Product -> equation.right as Expr.Product to equation.left
+        else -> return null
+    }
+
+    val constFactor = exprWithParen.factors.firstNotNullOfOrNull { exprToLong(it.operand) } ?: return null
+    val sumFactor = exprWithParen.factors.firstOrNull { it.operand is Expr.Sum }?.operand as? Expr.Sum ?: return null
+    val c = exprToLong(otherSide) ?: return null
+
+    var b = 0L
+    for (term in sumFactor.terms) {
+        val v = exprToLong(term.operand) ?: continue
+        b = if (term.operator == Expr.Sum.Term.Operator.MINUS) -v else v
+    }
+
+    val a = constFactor
+    val bAbs = kotlin.math.abs(b)
+    val bAction = if (b >= 0) "Sumar $bAbs a ambos lados" else "Restar $bAbs a ambos lados"
+    val bSign = if (b >= 0) "+ $b" else "- ${-b}"
+    val rightResult = if (a != 0L && c % a == 0L) (c / a).toString() else "$c/$a"
+    val resulting = "$variable $bSign = $rightResult"
+
+    return listOf(
+        StepOption(
+            letter = "A",
+            text = "Dividir ambos lados entre $a",
+            resultingExpression = resulting,
+            isCorrect = true,
+        ),
+        StepOption(
+            letter = "B",
+            text = bAction,
+            resultingExpression = null,
+            isCorrect = false,
+        ),
+        StepOption(
+            letter = "C",
+            text = "Multiplicar ambos lados por $a",
+            resultingExpression = null,
+            isCorrect = false,
+        ),
+    )
+}
+
+internal fun twoStepStepOptions(equation: Expr.Equals, variable: String): List<StepOption>? {
+    val sum = (equation.left as? Expr.Sum) ?: return null
+    var a = 0L
+    var b = 0L
+    for (term in sum.terms) {
+        val constVal = exprToLong(term.operand)
+        if (constVal != null) {
+            b = if (term.operator == Expr.Sum.Term.Operator.MINUS) -constVal else constVal
+            continue
+        }
+        when (val op = term.operand) {
+            is Expr.Var -> {
+                if (op.name == variable) {
+                    a = if (term.operator == Expr.Sum.Term.Operator.MINUS) -1L else 1L
+                }
+            }
+            is Expr.Product -> {
+                val coeff = op.factors.firstNotNullOfOrNull { exprToLong(it.operand) } ?: 1L
+                a = if (term.operator == Expr.Sum.Term.Operator.MINUS) -coeff else coeff
+            }
+            else -> {}
+        }
+    }
+    if (a == 0L || b == 0L) return null
+    val c = exprToLong(equation.right) ?: return null
+
+    val bAbs = kotlin.math.abs(b)
+    val correctAction = if (b > 0) "Restar $bAbs a ambos lados" else "Sumar $bAbs a ambos lados"
+    val wrongAction = if (b > 0) "Sumar $bAbs a ambos lados" else "Restar $bAbs a ambos lados"
+    val aStr = if (a == 1L) variable else if (a == -1L) "-$variable" else "$a$variable"
+    val resulting = "$aStr = ${c - b}"
+
+    return listOf(
+        StepOption(letter = "A", text = correctAction, resultingExpression = resulting, isCorrect = true),
+        StepOption(letter = "B", text = "Dividir ambos lados entre ${kotlin.math.abs(a)}", resultingExpression = null, isCorrect = false),
+        StepOption(letter = "C", text = wrongAction, resultingExpression = null, isCorrect = false),
+    )
+}
+
+internal fun fractionStepOptions(equation: Expr.Equals, variable: String): List<StepOption>? {
+    val quotient = (equation.left as? Expr.Quotient) ?: return null
+    val d = exprToLong(quotient.denominator) ?: return null
+    val c = exprToLong(equation.right) ?: return null
+    val sum = quotient.numerator as? Expr.Sum ?: return null
+    var b = 0L
+    for (term in sum.terms) {
+        val v = exprToLong(term.operand) ?: continue
+        b = if (term.operator == Expr.Sum.Term.Operator.MINUS) -v else v
+    }
+    val bSign = if (b >= 0) "+ $b" else "- ${-b}"
+    val resulting = "$variable $bSign = ${c * d}"
+    val bAbs = kotlin.math.abs(b)
+
+    return listOf(
+        StepOption(letter = "A", text = "Multiplicar ambos lados por $d", resultingExpression = resulting, isCorrect = true),
+        StepOption(letter = "B", text = "Restar $bAbs a ambos lados", resultingExpression = null, isCorrect = false),
+        StepOption(letter = "C", text = "Dividir ambos lados entre $d", resultingExpression = null, isCorrect = false),
+    )
+}
+
+internal fun fallbackStepOptions(): List<StepOption> = listOf(
+    StepOption(letter = "A", text = "Aislar términos con la incógnita", resultingExpression = null, isCorrect = true),
+    StepOption(letter = "B", text = "Sumar término a un solo lado", resultingExpression = null, isCorrect = false),
+    StepOption(letter = "C", text = "Multiplicar ambos lados por 0", resultingExpression = null, isCorrect = false),
+)

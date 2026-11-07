@@ -1,6 +1,18 @@
 package mx.matica.presentation.math
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.draw.clip
+import androidx.compose.material3.ripple
+import androidx.compose.ui.text.font.FontWeight
 
-import androidx.compose.animation.core.Animatable
+
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
@@ -20,9 +32,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -32,7 +42,6 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.PathMeasure
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -43,6 +52,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import mx.matica.design.motion.LocalMotionStyle
 import mx.matica.design.motion.MaticaMotion
+import mx.matica.design.motion.rememberReveal
 import mx.matica.design.theme.LocalMaticaSemanticColors
 import mx.matica.design.theme.MaticaColorPair
 import mx.matica.design.theme.MaticaSemanticColors
@@ -65,7 +75,7 @@ const val ROUTE_COLUMNS = 3
  * centro. No baja de 92 dp: con 76 la etiqueta quedaba sin dos líneas disponibles y el nudo se
  * leía «Operaciones con …» en vez de «Operaciones con enteros» (medido en el emulador).
  */
-private val RouteBandHeight = 92.dp
+private val RouteBandHeight = 110.dp
 
 /** Un nudo de la ruta: dónde se dibuja y qué se puede hacer con él. */
 data class RouteNode(
@@ -152,9 +162,9 @@ fun routeRevealKey(nodes: List<RouteNode>): RouteRevealKey = RouteRevealKey(
 )
 
 /**
- * Tramo visible del camino, ya en píxeles del canvas. Se calcula fuera de la fase de dibujo porque
- * `PathMeasure.setPath` muta lo que mide: medir dentro de `draw` sería un efecto secundario que
- * Compose puede repetir o cancelar sin avisar. Devuelve `null` cuando todavía no hay nada que trazar.
+ * Tramo visible del camino, ya en píxeles del canvas. Es pura: construye su propio `PathMeasure` y
+ * su propio `Path` en cada llamada, así que se puede medir dentro de `draw` aunque Compose repita o
+ * cancele el cuadro. Devuelve `null` cuando todavía no hay nada que trazar.
  */
 internal fun routeVisiblePath(
     ordered: List<RouteNode>,
@@ -187,24 +197,14 @@ fun RouteMapView(
     modifier: Modifier = Modifier,
     onNodeClick: (SkillId) -> Unit = {},
 ) {
-    val motion = LocalMotionStyle.current
     val semantic = LocalMaticaSemanticColors.current
     val scheme = MaterialTheme.colorScheme
     val rows = if (nodes.isEmpty()) 1 else (nodes.maxOf { it.row }) + 1
-    val reveal = remember { Animatable(if (motion.reduced) 1f else 0f) }
     // Clave estable derivada del contenido (cuántos nudos y en qué rejilla): la pantalla reconstruye
     // la lista en cada recomposición y usarla de clave volvía a trazar la ruta desde cero.
     val shape = routeRevealKey(nodes)
-    LaunchedEffect(shape, motion.reduced) {
-        if (motion.reduced) reveal.snapTo(1f) else reveal.animateTo(1f, MaticaMotion.contentSpec(motion))
-    }
+    val reveal = rememberReveal(shape)
     val ordered = remember(nodes) { nodes.sortedWith(compareBy({ it.row }, { it.column })) }
-    var canvasSize by remember { mutableStateOf(IntSize.Zero) }
-    // El `PathMeasure` se usa fuera de la fase de dibujo: medir muta el objeto, y Compose puede
-    // repetir `draw` cuando quiera, así que el tramo visible se calcula como estado recordado.
-    val visiblePath = remember(ordered, rows, canvasSize, reveal.value) {
-        routeVisiblePath(ordered = ordered, rows = rows, sizePx = canvasSize, reveal = reveal.value)
-    }
     val suggestion = nodes.firstOrNull { it.suggested }
     // Una sola caja: la banda de cada fila mide exactamente `bandHeight`, así que el centro del
     // nudo dibujado en el canvas y el centro de la tarjeta coinciden. Dos layouts distintos
@@ -219,8 +219,16 @@ fun RouteMapView(
                         ". " + (suggestion?.let { "Sugerencia para continuar: ${it.label}" } ?: "Sin sugerencia")
             },
     ) {
-        Canvas(modifier = Modifier.fillMaxSize().onSizeChanged { canvasSize = it }) {
-            val path = visiblePath ?: return@Canvas
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            // Medir dentro de la fase de dibujo, pero con un `PathMeasure` nuevo en cada llamada:
+            // sacarlo a un `remember(reveal.value)` recomponía el mapa entero —las 12 tarjetas de
+            // habilidad— en cada cuadro del trazado y en cada cambio de sugerencia.
+            val path = routeVisiblePath(
+                ordered = ordered,
+                rows = rows,
+                sizePx = IntSize(size.width.toInt(), size.height.toInt()),
+                reveal = reveal.value,
+            ) ?: return@Canvas
             drawPath(
                 path = path,
                 color = scheme.outlineVariant,
@@ -262,25 +270,41 @@ fun RouteMapView(
 @Composable
 private fun RouteChip(node: RouteNode, pair: MaticaColorPair, onClick: () -> Unit) {
     val motion = LocalMotionStyle.current
-    val pulse by animateFloatAsState(
-        targetValue = if (node.suggested && !motion.reduced) 1.04f else 1f,
-        animationSpec = MaticaMotion.popSpec(motion),
-        label = "matica-route-node",
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    // Halo animado de respiración / energía para el nodo sugerido (Figma 1:85)
+    val haloTransition = rememberInfiniteTransition(label = "route-halo")
+    val haloScale by haloTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.38f,
+        animationSpec = infiniteRepeatable(
+            animation = androidx.compose.animation.core.tween(durationMillis = 1400, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "haloScale",
     )
-    Surface(
-        onClick = onClick,
-        enabled = node.unlocked,
-        shape = RoundedCornerShape(MaticaSpacing.lg),
-        color = pair.background,
-        contentColor = pair.foreground,
+    val haloAlpha by haloTransition.animateFloat(
+        initialValue = 0.5f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(
+            animation = androidx.compose.animation.core.tween(durationMillis = 1400, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "haloAlpha",
+    )
+
+    val pressScale by animateFloatAsState(
+        targetValue = if (isPressed && node.unlocked) 0.90f else 1f,
+        animationSpec = MaticaMotion.popSpec(motion),
+        label = "route-press-scale",
+    )
+
+    Column(
         modifier = Modifier
-            .widthIn(max = 150.dp)
-            .graphicsLayer {
-                scaleX = pulse
-                scaleY = pulse
-                alpha = if (node.unlocked) 1f else 0.55f
-            }
-            .semantics {
+            .fillMaxWidth()
+            .padding(horizontal = 2.dp)
+            .semantics(mergeDescendants = true) {
                 role = Role.Button
                 contentDescription = buildString {
                     append("${node.label}. ${node.level.labelEs}.")
@@ -288,26 +312,73 @@ private fun RouteChip(node: RouteNode, pair: MaticaColorPair, onClick: () -> Uni
                     if (node.suggested) append(" Sugerida para continuar.")
                 }
             },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Column(
-            modifier = Modifier.padding(MaticaSpacing.sm),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(MaticaSpacing.xs),
+        // Medallón circular interactivo (Figma: ellipse 73x73 px)
+        Box(
+            modifier = Modifier.size(54.dp),
+            contentAlignment = Alignment.Center,
         ) {
-            MaticaGlyph(
-                icon = if (node.unlocked) levelGlyph(node.level) else MaticaIcon.LOCK,
-                tint = pair.foreground,
-                modifier = Modifier.size(20.dp),
-            )
-            Text(
-                text = node.label,
-                style = MaterialTheme.typography.labelSmall,
-                color = pair.foreground,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+            // Anillo pulsante de energía cuando es el nodo sugerido
+            if (node.suggested && !motion.reduced) {
+                Box(
+                    modifier = Modifier
+                        .size(54.dp)
+                        .graphicsLayer {
+                            scaleX = haloScale
+                            scaleY = haloScale
+                            alpha = haloAlpha
+                        }
+                        .clip(CircleShape)
+                        .border(width = 2.5.dp, color = MaterialTheme.colorScheme.primary, shape = CircleShape),
+                )
+            }
+
+            // Cuerpo del nodo circular tipo piedra de salto
+            Surface(
+                onClick = onClick,
+                enabled = node.unlocked,
+                shape = CircleShape,
+                color = pair.background,
+                contentColor = pair.foreground,
+                interactionSource = interactionSource,
+                modifier = Modifier
+                    .size(50.dp)
+                    .graphicsLayer {
+                        scaleX = pressScale
+                        scaleY = pressScale
+                        alpha = if (node.unlocked) 1f else 0.55f
+                    }
+                    .border(
+                        width = if (node.suggested) 2.5.dp else 1.5.dp,
+                        color = if (node.suggested) MaterialTheme.colorScheme.primary else pair.foreground.copy(alpha = 0.3f),
+                        shape = CircleShape,
+                    ),
+            ) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                    MaticaGlyph(
+                        icon = if (node.unlocked) levelGlyph(node.level) else MaticaIcon.LOCK,
+                        tint = pair.foreground,
+                        modifier = Modifier.size(22.dp),
+                        strokeWidthDp = if (node.suggested) 2.4f else 2f,
+                    )
+                }
+            }
         }
+
+        // Etiqueta legible de la habilidad debajo del círculo
+        Text(
+            text = node.label,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = if (node.suggested) FontWeight.Bold else FontWeight.Medium,
+            ),
+            color = if (node.unlocked) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 

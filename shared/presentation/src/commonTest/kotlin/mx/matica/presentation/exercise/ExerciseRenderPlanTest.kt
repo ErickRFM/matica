@@ -7,6 +7,7 @@ import mx.matica.exercises.GenerationOutcome
 import mx.matica.exercises.ParameterSet
 import mx.matica.math.MathEngine
 import mx.matica.math.numeric.Rational
+import mx.matica.presentation.app.graphWindow
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -104,6 +105,22 @@ class ExerciseRenderPlanTest {
             left.slope * x + left.intercept,
             right.slope * x + right.intercept,
             "El cruce de las dos rectas debía ser exactamente la solución.",
+        )
+    }
+
+    @Test
+    fun elPlanoAbreEnXLoMismoQueLaRecta() {
+        val plan = planOf("distributive-linear", 7_000L)
+        val window = graphWindow(plan)
+        assertEquals(
+            plan.numberLine.from,
+            window.xFrom,
+            "El plano y la recta enseñaban el mismo ejercicio en escalas horizontales distintas.",
+        )
+        assertEquals(plan.numberLine.to, window.xTo, "El extremo derecho del plano se despegó del de la recta.")
+        assertTrue(
+            plan.numberLine.orderedTicks.all { it >= window.xFrom && it <= window.xTo },
+            "Hay marcas de la recta que el plano no alcanzaría a mostrar.",
         )
     }
 

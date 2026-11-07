@@ -38,12 +38,14 @@ class ThemeTokensTest {
 
     @Test
     fun losParesMedidosCubrenLasDosCapasDelTema() {
-        assertEquals(17, maticaContrastPairs(MaticaLightColorScheme, MaticaSemanticColors.Light).size)
-        assertEquals(12, maticaContrastPairs(MaticaLightColorScheme, MaticaSemanticColors.Light).count {
+        assertEquals(20, maticaContrastPairs(MaticaLightColorScheme, MaticaSemanticColors.Light).size)
+        assertEquals(15, maticaContrastPairs(MaticaLightColorScheme, MaticaSemanticColors.Light).count {
             it.usage in setOf(
                 "botón principal", "chip seleccionado", "acción secundaria", "etiqueta de habilidad",
                 "acción de refuerzo", "insignia de rama", "mensaje de error sólido", "aviso de validación",
                 "texto de pantalla", "texto de tarjeta", "texto secundario", "tooltip",
+                "valor seguido sobre la pantalla", "valor seguido sobre la superficie",
+                "valor seguido sobre la tarjeta",
             )
         })
         assertEquals(5, MaticaSemanticColors.Light.textPairs().size)

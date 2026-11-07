@@ -129,7 +129,7 @@ class SkillGraphTest {
         val camino = miniatura.pathTo(ISOLATING_VARIABLE, setOf(INTEGER_OPERATIONS))
         assertContains(camino.orderedSkills, BALANCE_PRINCIPLE)
         assertEquals(ISOLATING_VARIABLE, camino.orderedSkills.last())
-        assertTrue("faltan 6 prerrequisito(s)" in camino.reason, camino.reason)
+        assertTrue("faltan 6 prerrequisitos:" in camino.reason, camino.reason)
         assertEquals(
             miniatura.order().filter { it in camino.orderedSkills.toSet() },
             camino.orderedSkills,
@@ -139,6 +139,22 @@ class SkillGraphTest {
         val listo = miniatura.pathTo(ISOLATING_VARIABLE, miniatura.transitivePrerequisites(ISOLATING_VARIABLE))
         assertEquals(listOf(ISOLATING_VARIABLE), listo.orderedSkills)
         assertTrue("está disponible" in listo.reason, listo.reason)
+    }
+
+    /**
+     * El texto que ve un estudiante con un solo pendiente. Antes de `pluralEs` la frase salía
+     * «faltan 1 prerrequisito(s)»: verbo en plural, sustantivo con la terminación del programador.
+     */
+    @Test
+    fun unPendienteSeNombraEnSingular() {
+        val dominaLoDemas = setOf(
+            DISTRIBUTIVE_PROPERTY, COMBINING_LIKE_TERMS, ALGEBRAIC_EXPRESSIONS, ORDER_OF_OPERATIONS, INTEGER_OPERATIONS,
+        )
+        val camino = miniatura.pathTo(BALANCE_PRINCIPLE, dominaLoDemas)
+
+        assertEquals(listOf(SIGN_HANDLING, BALANCE_PRINCIPLE), camino.orderedSkills)
+        assertTrue("falta 1 prerrequisito:" in camino.reason, camino.reason)
+        assertTrue("(s)" !in camino.reason, "El texto muestra la terminación del programador: ${camino.reason}")
     }
 
     @Test

@@ -1,6 +1,5 @@
 package mx.matica.presentation.math
 
-import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Box
@@ -11,11 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -24,16 +18,14 @@ import androidx.compose.ui.graphics.PathMeasure
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import mx.matica.design.motion.LocalMotionStyle
-import mx.matica.design.motion.MaticaMotion
+import mx.matica.design.motion.rememberReveal
+import mx.matica.design.theme.LocalMaticaSemanticColors
 import mx.matica.design.tokens.MaticaSpacing
 import mx.matica.math.numeric.Rational
-import kotlin.math.abs
 
 /** Punto muestreado del plano: ambos componentes siguen exactos hasta el dibujo. */
 data class PlotPoint(val x: Rational, val y: Rational)
@@ -141,16 +133,14 @@ fun plotRevealKey(series: PlotSeries): PlotRevealKey {
  * X que pide un arrastre sobre el plano: la fracción del ancho se traduce al candidato más cercano
  * dentro de la ventana dibujada. El punto nunca queda en una coordenada intermedia inventada.
  */
-fun trackerXAt(fraction: Float, xFrom: Rational, xTo: Rational, candidates: List<Rational>): Rational? {
-    if (candidates.isEmpty()) return null
-    val clamped = fraction.coerceIn(0f, 1f)
-    return candidates.minByOrNull { abs(positionOf(it, xFrom, xTo) - clamped) }
-}
+fun trackerXAt(fraction: Float, xFrom: Rational, xTo: Rational, candidates: List<Rational>): Rational? =
+    nearestCandidateAt(fraction, xFrom, xTo, candidates)
 
 /**
- * Tramos visibles de la serie, ya en píxeles del canvas. La medición ocurre fuera de la fase de
- * dibujo porque `PathMeasure.setPath` muta lo que mide y Compose puede volver a ejecutar `draw`
- * cuando quiera. Con `progress` en 1 devuelve la curva completa.
+ * Tramos visibles de la serie, ya en píxeles del canvas. Se mide dentro de la fase de dibujo y con
+ * un `PathMeasure` propio por llamada: nada se muta entre cuadros, así que Compose puede repetir
+ * `draw` cuando quiera sin que el resultado cambie de sentido. Con `progress` en 1 devuelve la
+ * curva completa.
  */
 internal fun plotVisibleSegments(series: PlotSeries, sizePx: IntSize, progress: Float): List<Path> {
     if (sizePx.width <= 0 || sizePx.height <= 0 || progress <= 0f) return emptyList()
@@ -195,19 +185,11 @@ fun CartesianGraphView(
     trackerCandidates: List<Rational> = emptyList(),
     onTrackerXChange: (Rational) -> Unit = {},
 ) {
-    val motion = LocalMotionStyle.current
-    val draw = remember { Animatable(if (motion.reduced) 1f else 0f) }
     val shape = plotRevealKey(series)
-    LaunchedEffect(shape, motion.reduced) {
-        if (motion.reduced) draw.snapTo(1f) else draw.animateTo(1f, MaticaMotion.contentSpec(motion))
-    }
+    val draw = rememberReveal(shape)
     val lineColor = MaterialTheme.colorScheme.primary
     val gridColor = MaterialTheme.colorScheme.outlineVariant
     val markerColor = MaterialTheme.colorScheme.tertiary
-    var canvasSize by remember { mutableStateOf(IntSize.Zero) }
-    val tracedSegments = remember(series, canvasSize, draw.value) {
-        plotVisibleSegments(series, canvasSize, draw.value)
-    }
     val tracked = trackerY?.let { function -> trackerX?.let { x -> x to function(x) } }
     Box(
         modifier = modifier
@@ -231,12 +213,16 @@ fun CartesianGraphView(
                 }
             },
     ) {
-        Canvas(modifier = Modifier.fillMaxSize().onSizeChanged { canvasSize = it }) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
             val horizontal = size.height / 2f
             val vertical = size.width / 2f
             drawLine(gridColor, Offset(0f, horizontal), Offset(size.width, horizontal), 2.dp.toPx())
             drawLine(gridColor, Offset(vertical, 0f), Offset(vertical, size.height), 2.dp.toPx())
-            tracedSegments.forEach { segment ->
+            // El progreso se lee dentro del `Canvas`: sacarlo a un `remember(draw.value)` del cuerpo
+            // recomponía toda la vista —y recalculaba la geometría de los trazos— en cada cuadro de
+            // la animación y de cada arrastre. Aquí sólo se redibuja.
+            plotVisibleSegments(series, IntSize(size.width.toInt(), size.height.toInt()), draw.value)
+                .forEach { segment ->
                 // 3 dp de grueso: medida del trazo, no de layout.
                 drawPath(path = segment, color = lineColor, style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round))
             }
@@ -273,7 +259,7 @@ fun CartesianGraphView(
             Text(
                 text = "$axisLabelX = ${point.first} · $axisLabelY = ${point.second}",
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
+                color = LocalMaticaSemanticColors.current.accentText,
                 modifier = Modifier.align(Alignment.TopEnd).padding(MaticaSpacing.xs),
             )
         }

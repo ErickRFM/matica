@@ -67,25 +67,36 @@ fun MaticaScreen(
     subtitle: String? = null,
     showChips: Boolean = true,
     actions: @Composable () -> Unit = {},
+    overlay: @Composable () -> Unit = {},
+    bottomBar: (@Composable () -> Unit)? = null,
     content: @Composable (PaddingValues) -> Unit,
 ) {
-    Column(modifier = modifier.fillMaxSize()) {
-        MaticaTopBar(title = title, subtitle = subtitle, session = session, onBack = onBack, showChips = showChips, actions = actions)
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                // El tope de ancho es lo que impide que en una tableta un párrafo cruce 900 dp y el
-                // ojo pierda el renglón siguiente; en un teléfono no se nota porque no lo alcanza.
-                .align(Alignment.CenterHorizontally)
-                .widthIn(max = MaticaLayout.maxContentWidth)
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = MaticaSpacing.lg, vertical = MaticaSpacing.md),
-            // Un solo hueco entre apartados: `MaticaSection` aporta el agrupamiento por dentro.
-            verticalArrangement = Arrangement.spacedBy(MaticaSpacing.lg),
-        ) {
-            content(PaddingValues())
+    // El `overlay` va en el `Box` y no en el `content`: el contenido vive dentro de un
+    // `verticalScroll`, y ahí dentro un `fillMaxSize` no tiene altura infinita que llenar —la hoja
+    // salía medrando en el flujo, en el punto donde se declaró, en vez de tapar la pantalla.
+    Box(modifier = modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            MaticaTopBar(title = title, subtitle = subtitle, session = session, onBack = onBack, showChips = showChips, actions = actions)
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    // El tope de ancho es lo que impide que en una tableta un párrafo cruce 900 dp y el
+                    // ojo pierda el renglón siguiente; en un teléfono no se nota porque no lo alcanza.
+                    .align(Alignment.CenterHorizontally)
+                    .widthIn(max = MaticaLayout.maxContentWidth)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = MaticaSpacing.lg, vertical = MaticaSpacing.md),
+                // Un solo hueco entre apartados: `MaticaSection` aporta el agrupamiento por dentro.
+                verticalArrangement = Arrangement.spacedBy(MaticaSpacing.lg),
+            ) {
+                content(PaddingValues())
+            }
+            if (bottomBar != null) {
+                bottomBar()
+            }
         }
+        overlay()
     }
 }
 
@@ -141,8 +152,14 @@ private fun MaticaTopBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (showChips) {
-                MaticaCountChip(value = session.xp, suffix = "XP", glyph = MaticaIcon.XP, pair = MaticaChipPalette.xp)
-                MaticaCountChip(value = session.streak, suffix = "días", glyph = MaticaIcon.FLAME, pair = MaticaChipPalette.streak)
+                MaticaCountChip(value = session.xp, unit = "XP", glyph = MaticaIcon.XP, pair = MaticaChipPalette.xp)
+                MaticaCountChip(
+                    value = session.streak,
+                    unit = "día",
+                    pluralUnit = "días",
+                    glyph = MaticaIcon.FLAME,
+                    pair = MaticaChipPalette.streak,
+                )
             }
             actions()
         }
@@ -172,7 +189,11 @@ fun MaticaField(
         OutlinedTextField(
             value = value,
             onValueChange = onValueChange,
-            modifier = Modifier.fillMaxWidth(),
+            // La etiqueta vive en un `Text` de arriba, y ese texto suelto no pertenece al campo: un
+            // lector de pantalla anunciaba «edit box» sin decir de qué campo se trataba. Aquí el
+            // campo se nombra a sí mismo. No se usó `labelFor`/`id`: esa API no existe en el Compose
+            // de este repositorio (buscada en los artefactos de `androidx.compose.*` 1.10.2).
+            modifier = Modifier.fillMaxWidth().semantics { contentDescription = label },
             placeholder = placeholder?.let { { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) } },
             singleLine = keyboard != KeyboardType.Text,
             isError = error != null,
@@ -190,6 +211,9 @@ fun MaticaField(
                 focusedBorderColor = MaterialTheme.colorScheme.primary,
                 unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
                 disabledBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                // Sin `errorBorderColor` a propósito: los parámetros omitidos valen
+                // `Color.Unspecified` y Material los resuelve contra el esquema. Medido, el trazo del
+                // campo rechazado tiene los mismos 7.811 píxeles de `error` con y sin esa línea.
             ),
         )
         // El aviso se despliega en vez de aparecer de golpe: si no, la fila de abajo salta de sitio

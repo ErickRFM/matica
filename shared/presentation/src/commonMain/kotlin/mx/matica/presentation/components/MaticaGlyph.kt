@@ -9,7 +9,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -45,9 +44,20 @@ fun MaticaGlyph(
                     moveTo(pad, h - pad)
                     cubicTo(w * 0.15f, h * 0.55f, w * 0.85f, h * 0.45f, w - pad, pad)
                 }
-                drawPath(path, tint, style = Stroke(width = stroke.width, cap = StrokeCap.Round, pathEffect = PathEffect.dashPathEffect(floatArrayOf(stroke.width * 3f, stroke.width * 2.5f))))
+                // Trazo continuo: con `dashPathEffect` de 6 dp sobre un glifo de 24 dp la curva
+                // salía en dos rayitas sueltas y, encima, era el único icono de toda la barra que
+                // se leía como «cargando» y no como «camino». El mapa de ruta (`RouteMapView`) ya
+                // dibuja su recorrido de un solo trazo; el icono tiene que decir lo mismo que la
+                // pantalla que abre. Los dos nodos siguen ahí para que el sentido (origen → meta)
+                // no dependa del color.
+                drawPath(path, tint, style = stroke)
                 drawCircle(tint, radius = stroke.width * 1.3f, center = Offset(pad, h - pad))
-                drawCircle(tint, radius = stroke.width * 1.3f, center = Offset(w - pad, pad))
+                drawCircle(
+                    tint,
+                    radius = stroke.width * 1.6f,
+                    center = Offset(w - pad, pad),
+                    style = Stroke(width = stroke.width, cap = StrokeCap.Round),
+                )
             }
             MaticaIcon.LESSON -> {
                 drawRoundRect(tint, Offset(pad, pad * 1.2f), Size(w - 2 * pad, h - 2.4f * pad), cornerRadius = CornerRadius(pad * 0.35f), style = stroke)
@@ -149,9 +159,15 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawArrow(
     val to = if (reverse) Offset(w * 0.22f, h / 2f) else Offset(w * 0.78f, h / 2f)
     drawLine(tint, from, to, stroke, cap = StrokeCap.Round)
     val tip = to
-    val wing = if (reverse) -1f else 1f
-    drawLine(tint, tip, Offset(tip.x + wing * w * 0.18f, tip.y - h * 0.18f), stroke, cap = StrokeCap.Round)
-    drawLine(tint, tip, Offset(tip.x + wing * w * 0.18f, tip.y + h * 0.18f), stroke, cap = StrokeCap.Round)
+    // Las barbas nacen en la punta y se ABIERNO HACIA EL PALO, no hacia adelante: con el signo
+    // anterior terminaban en 0.04w (izquierda de la punta en `BACK`), así que el glifo mostraba el
+    // remate de una fleca en el extremo equivocado y el ojo sólo leía la raya de 13 dp. Ahora el
+    // ala recorre el 45 % del palo (6 dp de 13) y abre 8 dp verticalmente: una punta que se ve.
+    val wing = if (reverse) 1f else -1f
+    val barbX = w * 0.25f
+    val barbY = h * 0.3f
+    drawLine(tint, tip, Offset(tip.x + wing * barbX, tip.y - barbY), stroke, cap = StrokeCap.Round)
+    drawLine(tint, tip, Offset(tip.x + wing * barbX, tip.y + barbY), stroke, cap = StrokeCap.Round)
 }
 
 private fun homePath(w: Float, h: Float, pad: Float) = Path().apply {

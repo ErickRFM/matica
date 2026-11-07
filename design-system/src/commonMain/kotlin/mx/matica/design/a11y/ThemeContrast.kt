@@ -23,4 +23,10 @@ fun maticaContrastPairs(scheme: ColorScheme, semantic: MaticaSemanticColors): Li
     MaticaColorPair(scheme.onSurface, scheme.surface, "texto de tarjeta"),
     MaticaColorPair(scheme.onSurfaceVariant, scheme.surfaceVariant, "texto secundario"),
     MaticaColorPair(scheme.inverseOnSurface, scheme.inverseSurface, "tooltip"),
+    // El texto de acento se mide CONTRA EL FONDO DONDE SE PINTA, no contra su propio contenedor:
+    // así apareció el fallo de `primary` como texto (4,36:1 sobre la pantalla y 4,11:1 sobre la
+    // tarjeta), invisible mientras sólo se medían pares onX/sobreX.
+    MaticaColorPair(semantic.accentText, scheme.background, "valor seguido sobre la pantalla"),
+    MaticaColorPair(semantic.accentText, scheme.surface, "valor seguido sobre la superficie"),
+    MaticaColorPair(semantic.accentText, scheme.surfaceVariant, "valor seguido sobre la tarjeta"),
 ) + semantic.textPairs()

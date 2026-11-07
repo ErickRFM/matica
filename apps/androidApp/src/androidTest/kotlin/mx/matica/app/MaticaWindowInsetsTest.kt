@@ -213,8 +213,10 @@ class MaticaWindowInsetsTest {
     private fun irAlReproductor() {
         rule.waitForIdle()
         pulsar("Entrar con una cuenta existente")
-        rule.onNodeWithText("Correo electrónico").assertIsDisplayed()
-        pulsar("Seguir con perfil local")
+        // El login cambia de cuerpo según traiga o no URL de servidor; el encabezado y la salida sin
+        // cuenta existen en los dos, así que la ruta no depende de cómo se compiló el APK.
+        rule.onNodeWithText("Entra a tu cuenta").assertIsDisplayed()
+        pulsar("Practicar sin cuenta")
         rule.onNodeWithText("Abrir mi ruta").assertIsDisplayed()
         pulsar("Abrir mi ruta")
         // Sin diagnóstico el único nudo desbloqueado del grafo es la raíz: «Operaciones con enteros».

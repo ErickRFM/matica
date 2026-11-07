@@ -1,5 +1,8 @@
 package mx.matica.presentation.app
 
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -35,6 +38,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import mx.matica.design.brand.MaticaMark
+import mx.matica.design.brand.MaticaMascot
+import mx.matica.design.brand.MascotEmotion
+import mx.matica.presentation.navigation.MaticaNavigationBar
 import mx.matica.design.motion.LocalMotionStyle
 import mx.matica.design.motion.MaticaMotion
 import mx.matica.design.tokens.MaticaLayout
@@ -42,16 +48,19 @@ import mx.matica.design.tokens.MaticaShapes
 import mx.matica.design.tokens.MaticaSpacing
 import mx.matica.learning.diagnosis.DiagnosisSession
 import mx.matica.learning.mastery.MasteryLevel
+import mx.matica.learning.text.pluralEs
 import mx.matica.math.skills.SkillId
 import mx.matica.presentation.components.MaticaButton
 import mx.matica.presentation.components.MaticaButtonVariant
 import mx.matica.presentation.components.MaticaChipPalette
+import mx.matica.presentation.components.MaticaConfirmDialog
 import mx.matica.presentation.components.MaticaCountChip
 import mx.matica.presentation.components.MaticaGlyph
 import mx.matica.presentation.components.MaticaIcon
 import mx.matica.presentation.components.MaticaIconButton
 import mx.matica.presentation.components.MaticaSection
 import mx.matica.presentation.math.RouteMapView
+import mx.matica.presentation.math.prettyMath
 import mx.matica.presentation.route.MaticaNavigator
 import mx.matica.presentation.route.MaticaRoute
 import mx.matica.presentation.state.MaticaStateView
@@ -59,7 +68,29 @@ import mx.matica.presentation.state.MaticaViewState
 
 @Composable
 fun WelcomeScreen(session: MaticaSession, navigator: MaticaNavigator) {
-    MaticaScreen(title = "Mática", session = session, showChips = false, subtitle = "Matemáticas con explicaciones") {
+    MaticaScreen(title = "Mática", session = session, showChips = false, subtitle = "Aprende matemáticas paso a paso") {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(vertical = MaticaSpacing.sm),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(MaticaSpacing.md),
+        ) {
+            MaticaMascot(
+                emotion = MascotEmotion.HAPPY,
+                modifier = Modifier.size(140.dp),
+            )
+            Text(
+                text = "¡Las matemáticas pueden ser divertidas!",
+                style = MaterialTheme.typography.headlineSmall,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = "Aprende paso a paso, resuelve retos a tu propio ritmo y domina cada concepto con explicaciones claras.",
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         MaticaCard {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.md)) {
                 MaticaGlyph(icon = MaticaIcon.ROUTE, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(2.dp))
@@ -92,7 +123,8 @@ fun WelcomeScreen(session: MaticaSession, navigator: MaticaNavigator) {
         )
         MaticaCaption(
             "Mática no muestra anuncios ni solicita datos personales innecesarios. " +
-                "El avance permanece en esta sesión mientras no exista sincronización.",
+                "Sin cuenta, el avance vive sólo en este teléfono; con cuenta, los intentos se envían " +
+                "al servidor cuando hay red.",
         )
     }
 }
@@ -139,16 +171,22 @@ private fun QuestionCard(question: mx.matica.learning.diagnosis.DiagnosisQuestio
     MaticaCard {
         Text(question.item.promptEs, style = MaterialTheme.typography.titleMedium)
         MaticaCaption("Escoge la opción que el motor pueda verificar. No hay tiempo límite.")
-        question.options.forEachIndexed { index, option ->
-            MaticaButton(
-                label = option,
-                onClick = { onAnswer(index) },
-                // OUTLINE y no NEUTRAL: el relleno del neutro es BlueMist, y BlueMist es también
-                // `surfaceVariant`, el color de la tarjeta. Dentro de una tarjeta el botón quedaba sin
-                // borde ni fondo: cuatro respuestas que parecían texto suelto (captura del 2026-11-06).
-                variant = MaticaButtonVariant.OUTLINE,
-                fullWidth = true,
-            )
+        // `md` y no los 8 dp de la tarjeta: cuatro botones de 48 dp tocándose con 8 dp leídos en la
+        // captura del teléfono parecían una lista densa, no cuatro alternativas para elegir.
+        Column(verticalArrangement = Arrangement.spacedBy(MaticaSpacing.md)) {
+            question.options.forEachIndexed { index, option ->
+                MaticaButton(
+                    // El instrumento escribe `x^5` porque es lo que el motor parsea; en pantalla se
+                    // lee x⁵, igual que en el resto de la app.
+                    label = prettyMath(option),
+                    onClick = { onAnswer(index) },
+                    // OUTLINE y no NEUTRAL: el relleno del neutro es BlueMist, y BlueMist es también
+                    // `surfaceVariant`, el color de la tarjeta. Dentro de una tarjeta el botón quedaba sin
+                    // borde ni fondo: cuatro respuestas que parecían texto suelto (captura del 2026-11-06).
+                    variant = MaticaButtonVariant.OUTLINE,
+                    fullWidth = true,
+                )
+            }
         }
     }
 }
@@ -187,7 +225,10 @@ fun DiagnosisResultScreen(session: MaticaSession, navigator: MaticaNavigator) {
             }
             val skipped = result.placements.filterNot { it.asked }
             if (skipped.isNotEmpty()) {
-                MaticaCaption("${skipped.size} habilidades no se preguntaron por el corte de bandas. Se abrirán con la ruta.")
+                MaticaCaption(
+                    "${skipped.size} ${pluralEs(skipped.size, "habilidad", "habilidades")} no se preguntaron " +
+                        "por el corte de bandas. Se abrirán con la ruta.",
+                )
             }
             MaticaButton(
                 label = "Ver mi ruta",
@@ -209,24 +250,31 @@ fun DiagnosisResultScreen(session: MaticaSession, navigator: MaticaNavigator) {
 }
 
 /**
- * Entrada con cuenta. El backend de cuentas está bloqueado, así que la pantalla no finge un formulario
- * que funciona: lo enseña apagado, explica por qué y deja el camino que sí existe —el perfil local—
- * como acción principal. La marca y el estado van arriba para que la pantalla se lea como «Mática» y
- * no como el hueco de una función que falta.
+ * Entrada con cuenta real. El servidor emite tokens (Argon2id + JWT), así que el formulario hace lo
+ * que promete: entrar o crear la cuenta. También deja claro qué queda en el teléfono y qué viaja.
  */
 @Composable
 fun LoginScreen(session: MaticaSession, navigator: MaticaNavigator) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var displayName by remember { mutableStateOf("") }
+    var creating by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     val motion = LocalMotionStyle.current
     // La marca entra dibujándose una sola vez por visita. Con movimiento reducido nace completa: no
     // hay versión «quieta» que esconda el nombre de la app.
     val heroDraw = remember { Animatable(if (motion.reduced) 1f else 0f) }
     LaunchedEffect(motion) {
-        if (!motion.reduced) {
+        // El `snapTo` de la rama reducida no es un detalle: la escala del sistema se puede cambiar con
+        // la app abierta y `platformMotionScale` ahora publica ese cambio al instante. Sin él, la marca
+        // se quedaba a medias de trazar para siempre justo cuando el teléfono pidió calma.
+        if (motion.reduced) {
+            heroDraw.snapTo(1f)
+        } else {
             heroDraw.animateTo(1f, tween(motion.ms(MaticaMotion.durations.xLong), easing = FastOutSlowInEasing))
         }
     }
+    val identity = session.accountIdentity
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -237,7 +285,7 @@ fun LoginScreen(session: MaticaSession, navigator: MaticaNavigator) {
         ) {
             MaticaIconButton(icon = MaticaIcon.BACK, contentDescription = "Regresa", onClick = { navigator.goBack() })
             Spacer(modifier = Modifier.weight(1f))
-            LoginStatusPill()
+            LoginStatusPill(signedIn = identity != null)
         }
         Column(
             modifier = Modifier
@@ -256,85 +304,181 @@ fun LoginScreen(session: MaticaSession, navigator: MaticaNavigator) {
             ) {
                 MaticaMark(modifier = Modifier.size(72.dp), drawn = heroDraw.value)
                 Text(
-                    text = "Entra a tu cuenta",
+                    text = if (identity == null) "Entra a tu cuenta" else "Tu cuenta",
                     style = MaterialTheme.typography.headlineMedium,
                     color = MaterialTheme.colorScheme.onBackground,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.semantics { heading() },
                 )
                 Text(
-                    text = "Tu ruta, tus repasos y tus logros, en un solo perfil.",
+                    text = identity?.email ?: "Tu ruta, tus repasos y tus logros, en un solo perfil.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                 )
             }
 
-            MaticaCard {
-                Text("Cuenta de Mática", style = MaterialTheme.typography.titleMedium)
-                MaticaCaption(
-                    "El servicio de cuentas todavía no está construido. El formulario no se puede " +
-                        "enviar: está aquí para que sepas qué pedirá cuando exista.",
-                )
-                MaticaField(
-                    value = email,
-                    onValueChange = { email = it },
-                    label = "Correo electrónico",
-                    placeholder = "tu@correo.com",
-                    keyboard = KeyboardType.Email,
-                    enabled = false,
-                    hint = "Desactivado hasta que exista el servicio.",
-                )
-                MaticaField(
-                    value = password,
-                    onValueChange = { password = it },
-                    label = "Contraseña",
-                    placeholder = "Tu contraseña",
-                    keyboard = KeyboardType.Password,
-                    enabled = false,
-                    hint = "Se habilita junto con el correo, cuando haya servidor.",
-                )
-            }
-
-            MaticaButton(
-                label = "Seguir con perfil local",
-                onClick = { navigator.replace(MaticaRoute.Home) },
-                leadingGlyph = MaticaIcon.HOME,
-                fullWidth = true,
-            )
-            MaticaCaption(
-                "Puedes practicar sin cuenta. Por ahora el progreso sólo permanece durante la sesión.",
-            )
-
-            MaticaSection("Cuando exista la cuenta") {
+            if (identity != null) {
                 MaticaCard {
-                    AccountFeature(
-                        icon = MaticaIcon.REFRESH,
-                        title = "Sincroniza entre dispositivos",
-                        detail = "Tu perfil y tus repasos te siguen a otro teléfono.",
+                    Text(identity.displayName ?: identity.email, style = MaterialTheme.typography.titleMedium)
+                    MaticaCaption(
+                        "Intentos pendientes de enviar: ${session.pendingSync}. El servidor reconoce cada " +
+                            "intento por su identificador, así que reintentar no duplica evidencia.",
                     )
-                    AccountFeature(
-                        icon = MaticaIcon.LOCK,
-                        title = "Recupera tu avance",
-                        detail = "Si pierdes el dispositivo, la cuenta devuelve tu ruta.",
-                    )
-                    AccountFeature(
-                        icon = MaticaIcon.FORWARD,
-                        title = "Aula del docente",
-                        detail = "Un código de grupo, sin datos personales de más.",
+                    MaticaButton(
+                        label = "Sincronizar ahora",
+                        onClick = {
+                            session.requestSync()
+                            session.refreshSyncState()
+                        },
+                        variant = MaticaButtonVariant.OUTLINE,
+                        fullWidth = true,
                     )
                 }
+                MaticaButton(
+                    label = "Continuar",
+                    onClick = { navigator.replace(MaticaRoute.Home) },
+                    leadingGlyph = MaticaIcon.HOME,
+                    fullWidth = true,
+                )
+                MaticaButton(
+                    label = "Cerrar sesión",
+                    onClick = { session.signOut() },
+                    variant = MaticaButtonVariant.OUTLINE,
+                    fullWidth = true,
+                )
+                MaticaCaption(
+                    "Al cerrar sesión, los intentos ya guardados permanecen en este teléfono y se envían " +
+                        "cuando vuelvas a entrar con la misma cuenta.",
+                )
+            } else if (!session.accountAvailable) {
+                MaticaStateView(
+                    state = MaticaViewState.Error(
+                        title = "Cuentas no disponibles en esta versión",
+                        detail = "Esta copia de Mática se compiló sin la dirección del servidor, así que no puede " +
+                            "crear cuentas ni sincronizar. La práctica local funciona completa.",
+                    ),
+                    onRetry = null,
+                ) { }
+                MaticaButton(
+                    label = "Practicar sin cuenta",
+                    onClick = { navigator.replace(MaticaRoute.Home) },
+                    leadingGlyph = MaticaIcon.HOME,
+                    fullWidth = true,
+                )
+            } else {
+                MaticaCard {
+                    Text(if (creating) "Crear cuenta" else "Cuenta de Mática", style = MaterialTheme.typography.titleMedium)
+                    MaticaCaption(
+                        if (creating) {
+                            "Un correo y una contraseña de al menos 8 caracteres. El nombre es opcional y " +
+                                "es lo que verá tu grupo."
+                        } else {
+                            "Entra con el correo y la contraseña de tu cuenta."
+                        },
+                    )
+                    MaticaField(
+                        value = email,
+                        onValueChange = { email = it },
+                        label = "Correo electrónico",
+                        placeholder = "tu@correo.com",
+                        keyboard = KeyboardType.Email,
+                        enabled = !session.authBusy,
+                    )
+                    if (creating) {
+                        MaticaField(
+                            value = displayName,
+                            onValueChange = { displayName = it },
+                            label = "Nombre en el aula (opcional)",
+                            placeholder = "Cómo te verá el grupo",
+                            enabled = !session.authBusy,
+                        )
+                    }
+                    MaticaField(
+                        value = password,
+                        onValueChange = { password = it },
+                        label = "Contraseña",
+                        placeholder = if (creating) "Al menos 8 caracteres" else "Tu contraseña",
+                        keyboard = KeyboardType.Password,
+                        enabled = !session.authBusy,
+                    )
+                    session.authError?.let { error ->
+                        Text(
+                            text = error,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    MaticaButton(
+                        label = when {
+                            session.authBusy -> "Conectando…"
+                            creating -> "Crear cuenta"
+                            else -> "Entrar"
+                        },
+                        onClick = {
+                            scope.launch {
+                                val ok = if (creating) {
+                                    session.createAccount(email.trim(), password, displayName.trim())
+                                } else {
+                                    session.signIn(email.trim(), password)
+                                }
+                                if (ok) navigator.replace(MaticaRoute.Home)
+                            }
+                        },
+                        enabled = !session.authBusy,
+                        fullWidth = true,
+                    )
+                    MaticaButton(
+                        label = if (creating) "Ya tengo cuenta" else "Crear una cuenta nueva",
+                        onClick = {
+                            creating = !creating
+                            session.clearAuthError()
+                        },
+                        enabled = !session.authBusy,
+                        variant = MaticaButtonVariant.OUTLINE,
+                        fullWidth = true,
+                    )
+                }
+
+                MaticaButton(
+                    label = "Practicar sin cuenta",
+                    onClick = { navigator.replace(MaticaRoute.Home) },
+                    leadingGlyph = MaticaIcon.HOME,
+                    variant = MaticaButtonVariant.NEUTRAL,
+                    fullWidth = true,
+                )
+                MaticaCaption("Sin cuenta puedes practicar; el progreso vive sólo en este teléfono.")
+
+                MaticaSection("Con tu cuenta") {
+                    MaticaCard {
+                        AccountFeature(
+                            icon = MaticaIcon.REFRESH,
+                            title = "Sincroniza entre dispositivos",
+                            detail = "Los intentos se guardan primero en el teléfono y se envían al servidor cuando hay red.",
+                        )
+                        AccountFeature(
+                            icon = MaticaIcon.LOCK,
+                            title = "Recupera tu avance",
+                            detail = "La cuenta devuelve tu historial si pierdes el dispositivo.",
+                        )
+                        AccountFeature(
+                            icon = MaticaIcon.FORWARD,
+                            title = "Aula del docente",
+                            detail = "Un código de grupo, sin datos personales de más.",
+                        )
+                    }
+                }
+                MaticaCaption(
+                    "La contraseña se envía al servidor de Mática y se guarda con Argon2id. La app no la " +
+                        "conserva: sólo guarda el token de la sesión.",
+                )
             }
-            MaticaCaption(
-                "Mática no muestra anuncios ni vende datos. El correo sólo servirá para entrar; hoy " +
-                    "no se guarda ninguno en la app.",
-            )
         }
     }
 }
 
 @Composable
-private fun LoginStatusPill() {
+private fun LoginStatusPill(signedIn: Boolean) {
     val scheme = MaterialTheme.colorScheme
     Row(
         modifier = Modifier
@@ -344,13 +488,13 @@ private fun LoginStatusPill() {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         MaticaGlyph(
-            icon = MaticaIcon.LOCK,
+            icon = if (signedIn) MaticaIcon.CHECK else MaticaIcon.LOCK,
             tint = scheme.onSecondaryContainer,
             modifier = Modifier.size(16.dp),
             strokeWidthDp = 2.2f,
         )
         Text(
-            text = "Cuentas en preparación",
+            text = if (signedIn) "Sesión activa" else "Cuenta Mática",
             style = MaterialTheme.typography.labelMedium,
             color = scheme.onSecondaryContainer,
         )
@@ -393,9 +537,102 @@ fun HomeScreen(session: MaticaSession, navigator: MaticaNavigator) {
         subtitle = plan.reason,
         session = session,
         actions = {
-            MaticaCountChip(value = session.gems, suffix = "gemas", glyph = MaticaIcon.GEM, pair = MaticaChipPalette.xp)
+            MaticaCountChip(
+                value = session.gems,
+                unit = "gema",
+                pluralUnit = "gemas",
+                glyph = MaticaIcon.GEM,
+                pair = MaticaChipPalette.xp,
+            )
         },
+        bottomBar = { MaticaNavigationBar(currentRoute = MaticaRoute.Home, navigator = navigator) },
     ) {
+        // Hero Card «SIGUE TU AVENTURA» (Figma 1:34)
+        val nextSkill = plan.nextSkills.firstOrNull()?.skill
+        MaticaCard(
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(vertical = MaticaSpacing.xs),
+                verticalArrangement = Arrangement.spacedBy(MaticaSpacing.sm),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "SIGUE TU AVENTURA",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        text = "x²",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.tertiary,
+                    )
+                }
+                Text(
+                    text = nextSkill?.labelEs ?: "Álgebra básica",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = "Mundo 2 · Enfoque diario de aprendizaje",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                MaticaButton(
+                    label = if (nextSkill != null) "Continuar lección" else "Abrir mi ruta",
+                    onClick = {
+                        if (nextSkill != null) {
+                            navigator.go(MaticaRoute.SkillDetail(nextSkill))
+                        } else {
+                            navigator.go(MaticaRoute.RouteMap)
+                        }
+                    },
+                    leadingGlyph = MaticaIcon.ROUTE,
+                    fullWidth = true,
+                )
+            }
+        }
+
+        // Misiones de hoy (Figma 1:45)
+        MaticaSection("Tus misiones de hoy") {
+            MaticaCard {
+                Column(verticalArrangement = Arrangement.spacedBy(MaticaSpacing.sm)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.sm),
+                    ) {
+                        MaticaGlyph(
+                            icon = if (session.streak > 0) MaticaIcon.CHECK else MaticaIcon.LESSON,
+                            tint = if (session.streak > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp),
+                        )
+                        Text(
+                            text = "Completa una lección hoy",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                        )
+                    }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.sm),
+                    ) {
+                        MaticaGlyph(
+                            icon = if (session.xp > 0) MaticaIcon.CHECK else MaticaIcon.XP,
+                            tint = if (session.xp > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp),
+                        )
+                        Text(
+                            text = "Acumula experiencia diaria",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                        )
+                    }
+                }
+            }
+        }
+
         MaticaButton(
             label = "Abrir mi ruta",
             onClick = { navigator.go(MaticaRoute.RouteMap) },
@@ -417,7 +654,10 @@ fun HomeScreen(session: MaticaSession, navigator: MaticaNavigator) {
                             MaticaGlyph(icon = MaticaIcon.REFRESH, tint = MaterialTheme.colorScheme.error)
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(due.skill.labelEs, style = MaterialTheme.typography.titleMedium)
-                                MaticaCaption("Repaso vencido hace ${due.daysOverdue} día(s). ${due.level.labelEs}.")
+                                MaticaCaption(
+                                    "Repaso vencido hace ${due.daysOverdue} " +
+                                        pluralEs(due.daysOverdue.toInt(), "día", "días") + ". ${due.level.labelEs}.",
+                                )
                             }
                             MaticaButton(label = "Repasar", onClick = { navigator.go(MaticaRoute.SkillDetail(due.skill)) })
                         }
@@ -472,7 +712,7 @@ fun HomeScreen(session: MaticaSession, navigator: MaticaNavigator) {
 
 @Composable
 fun RouteMapScreen(session: MaticaSession, navigator: MaticaNavigator) {
-    MaticaScreen(title = "Mi ruta", subtitle = "Desbloquea dominando, no avanzando", session = session, onBack = { navigator.goBack() }) {
+    MaticaScreen(title = "Mi ruta", subtitle = "Desbloquea dominando, no avanzando", session = session, onBack = { navigator.goBack() }, bottomBar = { MaticaNavigationBar(currentRoute = MaticaRoute.RouteMap, navigator = navigator) }) {
         MaticaStateView(
             state = run {
                 val nodes = session.nodes()
@@ -483,6 +723,43 @@ fun RouteMapScreen(session: MaticaSession, navigator: MaticaNavigator) {
                 }
             },
         ) { nodes ->
+            // Cabecera de Mundo (Figma 1:74)
+            val dominadas = nodes.count { it.level == MasteryLevel.PROFICIENT || it.level == MasteryLevel.FLUENT }
+            val total = nodes.size
+            MaticaCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = MaticaSpacing.xs),
+                    verticalArrangement = Arrangement.spacedBy(MaticaSpacing.xs),
+                ) {
+                    Text(
+                        text = "MUNDO 02",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.tertiary,
+                    )
+                    Text(
+                        text = "El reino del álgebra",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "$dominadas de $total habilidades dominadas",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            text = "${if (total > 0) (dominadas * 100 / total) else 0}%",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+            }
+
             RouteMapView(nodes = nodes, onNodeClick = { skill -> navigator.go(MaticaRoute.SkillDetail(skill)) })
             val suggestion = nodes.firstOrNull { it.suggested }
             // Sin sugerencia puede significar dos cosas distintas y el estudiante tiene derecho a
@@ -560,7 +837,7 @@ fun SkillDetailScreen(skill: SkillId, session: MaticaSession, navigator: MaticaN
 @Composable
 fun ReviewQueueScreen(session: MaticaSession, navigator: MaticaNavigator) {
     val plan = session.studyPlan()
-    MaticaScreen(title = "Repasos", subtitle = "Vencer no es olvidar: es revalidar", session = session, onBack = { navigator.goBack() }) {
+    MaticaScreen(title = "Repasos", subtitle = "Vencer no es olvidar: es revalidar", session = session, onBack = { navigator.goBack() }, bottomBar = { MaticaNavigationBar(currentRoute = MaticaRoute.ReviewQueue, navigator = navigator) }) {
         MaticaStateView(
             state = when {
                 plan.reviewsDue.isEmpty() -> MaticaViewState.Empty(
@@ -578,7 +855,10 @@ fun ReviewQueueScreen(session: MaticaSession, navigator: MaticaNavigator) {
                         MaticaGlyph(icon = MaticaIcon.FLAME, tint = MaterialTheme.colorScheme.error)
                         Column(modifier = Modifier.weight(1f)) {
                             Text(item.skill.labelEs, style = MaterialTheme.typography.titleMedium)
-                            MaticaCaption("Programado el ${item.scheduledOn} · ${item.daysOverdue} día(s) de retraso.")
+                            MaticaCaption(
+                                "Programado el ${item.scheduledOn} · ${item.daysOverdue} " +
+                                    pluralEs(item.daysOverdue.toInt(), "día", "días") + " de retraso.",
+                            )
                         }
                         MaticaButton(label = "Abrir", onClick = { navigator.go(MaticaRoute.SkillDetail(item.skill)) })
                     }
@@ -606,8 +886,22 @@ fun RewardsScreen(session: MaticaSession, navigator: MaticaNavigator) {
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.sm)) {
             MaticaCountChip(session.xp, "XP", MaticaIcon.XP, MaticaChipPalette.xp, Modifier.weight(1f))
-            MaticaCountChip(session.streak, "días", MaticaIcon.FLAME, MaticaChipPalette.streak, Modifier.weight(1f))
-            MaticaCountChip(session.gems, "gemas", MaticaIcon.GEM, MaticaChipPalette.xp, Modifier.weight(1f))
+            MaticaCountChip(
+                session.streak,
+                "día",
+                MaticaIcon.FLAME,
+                MaticaChipPalette.streak,
+                Modifier.weight(1f),
+                pluralUnit = "días",
+            )
+            MaticaCountChip(
+                session.gems,
+                "gema",
+                MaticaIcon.GEM,
+                MaticaChipPalette.xp,
+                Modifier.weight(1f),
+                pluralUnit = "gemas",
+            )
         }
         MaticaSection("Marcas") {
             listOf(
@@ -638,7 +932,95 @@ fun RewardsScreen(session: MaticaSession, navigator: MaticaNavigator) {
 @Composable
 fun ProfileScreen(session: MaticaSession, navigator: MaticaNavigator) {
     val skills = session.graph.order().sortedBy { it.labelEs }
-    MaticaScreen(title = "Mi perfil", session = session, onBack = { navigator.goBack() }, subtitle = "Perfil local, sin servidor") {
+    var confirmarReinicio by remember { mutableStateOf(false) }
+    val conCuenta = session.accountIdentity != null
+    MaticaScreen(
+        title = "Mi perfil",
+        session = session,
+        onBack = { navigator.goBack() },
+        subtitle = if (conCuenta) "Progreso local y cuenta Mática" else "Perfil local, sin servidor",
+        bottomBar = { MaticaNavigationBar(currentRoute = MaticaRoute.Profile, navigator = navigator) },
+        overlay = {
+            if (confirmarReinicio) {
+                MaticaConfirmDialog(
+                    title = "¿Reiniciar el perfil local?",
+                    detail = "Se borran la evidencia, el nivel de cada habilidad, la racha y las gemas de este " +
+                        "teléfono." + if (conCuenta) {
+                        " Tu cuenta y los intentos ya sincronizados con el servidor no se borran desde aquí."
+                    } else {
+                        " No hay copia en ningún servidor: lo que se va aquí se va para siempre."
+                    },
+                    confirmLabel = "Sí, reiniciar",
+                    dismissLabel = "Conservar",
+                    onConfirm = {
+                        confirmarReinicio = false
+                        session.resetSession()
+                        navigator.resetTo(MaticaRoute.Welcome)
+                    },
+                    onDismissRequest = { confirmarReinicio = false },
+                )
+            }
+        },
+    ) {
+        // Mis estadísticas (Figma 1:177)
+        MaticaCard(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = MaticaSpacing.xs),
+                horizontalArrangement = Arrangement.SpaceAround,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("${session.streak}", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
+                    Text("Días de racha", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    val lecciones = session.profile.progress.values.sumOf { it.window.size }
+                    Text("$lecciones", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.secondary)
+                    Text("Lecciones", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("${session.gems}", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.tertiary)
+                    Text("Gemas", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+
+        // Mis insignias (Figma 1:184)
+        MaticaSection("Mis insignias") {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.sm),
+            ) {
+                listOf(
+                    Triple("★", "Primer paso", session.xp > 0),
+                    Triple("♛", "Mente ágil", session.streak >= 3),
+                    Triple("⚡", "Sin rendirse", session.gems >= 5),
+                ).forEach { (icono, nombre, ganada) ->
+                    MaticaCard(
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text(
+                                text = icono,
+                                style = MaterialTheme.typography.titleLarge,
+                                color = if (ganada) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                            )
+                            Text(
+                                text = nombre,
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                textAlign = TextAlign.Center,
+                                color = if (ganada) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         MaticaStateView(
             state = when {
                 session.profile.progress.isEmpty() -> MaticaViewState.Empty(
@@ -663,10 +1045,7 @@ fun ProfileScreen(session: MaticaSession, navigator: MaticaNavigator) {
         }
         MaticaButton(
             label = "Reiniciar el perfil local",
-            onClick = {
-                session.resetSession()
-                navigator.resetTo(MaticaRoute.Welcome)
-            },
+            onClick = { confirmarReinicio = true },
             variant = MaticaButtonVariant.OUTLINE,
             fullWidth = true,
         )
@@ -747,13 +1126,68 @@ fun SettingsScreen(session: MaticaSession, navigator: MaticaNavigator) {
                 fullWidth = true,
             )
         }
+        MaticaSection("Cuenta") {
+            val identity = session.accountIdentity
+            if (identity == null) {
+                MaticaCaption("Sin cuenta: el progreso vive sólo en este teléfono.")
+                if (session.accountAvailable) {
+                    MaticaButton(
+                        label = "Entrar o crear cuenta",
+                        onClick = { navigator.go(MaticaRoute.Login) },
+                        leadingGlyph = MaticaIcon.LOCK,
+                        fullWidth = true,
+                    )
+                } else {
+                    MaticaCaption("Esta compilación no incluye el servidor de cuentas.")
+                }
+            } else {
+                MaticaCaption(identity.email)
+                MaticaCaption(
+                    if (session.pendingSync == 0) {
+                        "Sin intentos pendientes de sincronizar."
+                    } else if (session.pendingSync == 1) {
+                        "1 intento esperando sincronizar."
+                    } else {
+                        "${session.pendingSync} intentos esperando sincronizar."
+                    },
+                )
+                MaticaButton(
+                    label = "Sincronizar ahora",
+                    onClick = {
+                        session.requestSync()
+                        session.refreshSyncState()
+                    },
+                    variant = MaticaButtonVariant.OUTLINE,
+                    fullWidth = true,
+                )
+                MaticaButton(
+                    label = "Cerrar sesión",
+                    onClick = {
+                        session.signOut()
+                        navigator.go(MaticaRoute.Login)
+                    },
+                    variant = MaticaButtonVariant.NEUTRAL,
+                    fullWidth = true,
+                )
+            }
+        }
         MaticaSection("Conexión") {
             MaticaButton(
-                label = if (session.offline) "Comprobar conexión" else "Volver a comprobar",
+                label = when {
+                    session.checkingConnection -> "Comprobando…"
+                    session.offline -> "Comprobar conexión"
+                    else -> "Volver a comprobar"
+                },
                 onClick = { coroutineScope.launch { session.refreshConnection() } },
+                enabled = !session.checkingConnection,
                 variant = MaticaButtonVariant.OUTLINE,
                 fullWidth = true,
             )
+            // El esqueleto de carga sólo se muestra mientras la sonda está en vuelo; no hay espera que
+            // fingir en el resto de la app, porque todo lo demás se calcula en el propio teléfono.
+            if (session.checkingConnection) {
+                MaticaStateView(state = MaticaViewState.Loading) { }
+            }
             MaticaCaption(
                 "Estado real del servidor. El motor matemático y la práctica local funcionan también sin conexión.",
             )
@@ -764,36 +1198,111 @@ fun SettingsScreen(session: MaticaSession, navigator: MaticaNavigator) {
 
 @Composable
 fun ClassroomScreen(session: MaticaSession, navigator: MaticaNavigator) {
-    var code = remember { "" }
+    var code by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    val identity = session.accountIdentity
+    LaunchedEffect(identity?.id) { if (identity != null) session.loadClassrooms() }
+
     MaticaScreen(title = "Aula", session = session, onBack = { navigator.goBack() }, subtitle = "Grupo del docente") {
-        MaticaStateView(
-            state = MaticaViewState.Error(
-                title = "Sin servicio de aula",
-                detail = "Unirse a un grupo necesita el backend: no está construido ni desplegado, así que " +
-                    "ningún código de invitación puede validarse. La app no finge unirse a nada.",
-            ),
-            onRetry = null,
-        ) { }
+        if (identity == null) {
+            // Dos copy distintas y no una: «no hay red en este teléfono» y «no hay sesión» se
+            // arreglan de manera diferente. El caso Offline sigue siendo el único lugar donde la
+            // app construye `MaticaViewState.Offline` de verdad.
+            MaticaStateView(
+                state = if (session.offline) {
+                    MaticaViewState.Offline(
+                        title = "Sin conexión con el aula",
+                        detail = "Unirse a un grupo necesita el backend y este teléfono no lo alcanza " +
+                            "ahora mismo. Nada se pierde al esperar: el trabajo local sigue guardado.",
+                    )
+                } else {
+                    MaticaViewState.Error(
+                        title = "El aula necesita una cuenta",
+                        detail = "Unirse a un grupo exige identificar al estudiante. Entra a tu cuenta; " +
+                            "la práctica local sigue disponible sin ella.",
+                    )
+                },
+                onRetry = null,
+            ) { }
+            MaticaButton(
+                label = "Entrar a mi cuenta",
+                onClick = { navigator.go(MaticaRoute.Login) },
+                leadingGlyph = MaticaIcon.LOCK,
+                fullWidth = true,
+            )
+            return@MaticaScreen
+        }
+
+        if (session.classroomBusy) {
+            MaticaStateView(state = MaticaViewState.Loading) { }
+        }
+
         MaticaCard {
+            Text("Unirme con un código", style = MaterialTheme.typography.titleSmall)
             MaticaField(
                 value = code,
-                onValueChange = { code = it },
+                onValueChange = { code = it.uppercase().take(6) },
                 label = "Código de invitación",
                 placeholder = "6 caracteres",
-                enabled = false,
-                hint = "Desactivado: no hay servidor que lo valide.",
+                hint = "Te lo da tu docente. Se lee sin distinguir mayúsculas.",
+                enabled = !session.classroomBusy,
             )
-            MaticaCaption(
-                "Cuando exista el servicio, el aula traerá: lista del grupo, asignaciones y vista " +
-                    "docente sin datos personales del estudiante más allá del alias del grupo.",
+            MaticaButton(
+                label = if (session.classroomBusy) "Comprobando…" else "Unirme",
+                onClick = { scope.launch { session.joinClassroom(code) } },
+                enabled = !session.classroomBusy && code.length == 6,
+                fullWidth = true,
             )
         }
+
+        MaticaCard {
+            Text("Crear un grupo", style = MaterialTheme.typography.titleSmall)
+            MaticaField(
+                value = name,
+                onValueChange = { name = it.take(60) },
+                label = "Nombre del grupo",
+                placeholder = "3.º B — turno matutino",
+                enabled = !session.classroomBusy,
+            )
+            MaticaButton(
+                label = "Crear grupo",
+                onClick = { scope.launch { session.createClassroom(name) } },
+                enabled = !session.classroomBusy && name.length >= 3,
+                variant = MaticaButtonVariant.OUTLINE,
+                fullWidth = true,
+            )
+        }
+
+        session.classroomMessage?.let { MaticaCaption(it) }
+
+        MaticaSection(title = "Mis grupos") {
+            if (session.classroomGroups.isEmpty()) {
+                MaticaCaption("Todavía no perteneces a ningún grupo.")
+            } else {
+                session.classroomGroups.forEach { group ->
+                    MaticaCard {
+                        Text(group.name, style = MaterialTheme.typography.titleSmall)
+                        MaticaCaption(
+                            buildString {
+                                append(if (group.role == "owner") "Docente" else "Estudiante")
+                                append(" · ")
+                                append(if (group.memberCount == 1) "1 integrante" else "${group.memberCount} integrantes")
+                                if (group.inviteCode != null) append(" · Código: ${group.inviteCode}")
+                            },
+                        )
+                    }
+                }
+            }
+        }
+
         MaticaButton(
             label = "Practicar sin grupo",
             onClick = {
                 val template = MaticaRoute.KNOWN_TEMPLATES.first()
                 navigator.go(MaticaRoute.Practice(template, MaticaSession.BASE_SEED))
             },
+            variant = MaticaButtonVariant.OUTLINE,
             fullWidth = true,
         )
     }

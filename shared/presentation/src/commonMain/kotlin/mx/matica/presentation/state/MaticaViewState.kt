@@ -10,7 +10,11 @@ sealed interface MaticaViewState<out T> {
 
     data object Loading : MaticaViewState<Nothing>
 
-    data class Empty(val title: String, val description: String) : MaticaViewState<Nothing>
+    data class Empty(
+        val title: String,
+        val description: String,
+        val retryLabel: String = RETRY_LABEL,
+    ) : MaticaViewState<Nothing>
 
     data class Error(val title: String, val detail: String, val retryLabel: String = RETRY_LABEL) : MaticaViewState<Nothing>
 

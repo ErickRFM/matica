@@ -14,7 +14,7 @@ class ComponentContrastTest {
     private val variants = MaticaButtonVariant.entries.toList()
 
     @Test
-    fun lasCincoVariantesSeMidenEnAmbosTemas() {
+    fun lasVariantesDeBotonSeMidenEnAmbosTemas() {
         val pairs = MaticaButtonPalette.measuredPairs()
         assertEquals(variants.size * 2, pairs.size)
         pairs.forEach { pair ->

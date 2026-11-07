@@ -12,6 +12,12 @@ data class MaticaColorPair(val foreground: Color, val background: Color, val usa
  *
  * Cada par `sobre fondo` está elegido para texto normal, así que las pruebas exigen AA (4.5:1)
  * sobre todos los que expone [textPairs].
+ *
+ * `accentText` existe porque `colorScheme.primary` (#426BEB) como TEXTO no llega a AA sobre los
+ * fondos reales del tema claro: medido, 4,36:1 sobre `background` y 4,11:1 sobre `surfaceVariant`.
+ * Como rol gráfico el azul sí sirve (una barra de progreso no necesita 4,5:1), pero un número que el
+ * estudiante tiene que leer sí. En claro se usa el azul profundo (9,77:1 y 9,22:1) y en oscuro
+ * `BlueLight` (7,93:1 y 6,30:1).
  */
 data class MaticaSemanticColors(
     val successContainer: Color,
@@ -24,6 +30,7 @@ data class MaticaSemanticColors(
     val onTealContainer: Color,
     val equationSurface: Color,
     val onEquationSurface: Color,
+    val accentText: Color,
     val divider: Color,
     val mascot: Color,
 ) {
@@ -47,6 +54,7 @@ data class MaticaSemanticColors(
             onTealContainer = MaticaPalette.TealInk,
             equationSurface = MaticaPalette.Paper,
             onEquationSurface = MaticaPalette.Ink,
+            accentText = MaticaPalette.BlueDeep,
             divider = MaticaPalette.BlueSoft,
             mascot = MaticaPalette.Lime,
         )
@@ -62,6 +70,7 @@ data class MaticaSemanticColors(
             onTealContainer = MaticaPalette.TealInk,
             equationSurface = MaticaPalette.NightSurface,
             onEquationSurface = MaticaPalette.MistText,
+            accentText = MaticaPalette.BlueLight,
             divider = MaticaPalette.BlueDeep,
             mascot = MaticaPalette.Lime,
         )

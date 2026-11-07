@@ -38,8 +38,8 @@ import mx.matica.design.tokens.MaticaPalette
 import mx.matica.design.tokens.MaticaShapes
 import mx.matica.design.tokens.MaticaSpacing
 
-/** Los cinco `Boton` del archivo de Figma, con los pares exactos que se prueban por contraste. */
-enum class MaticaButtonVariant { PRIMARY, ACCENT, NEUTRAL, OUTLINE, TEXT }
+/** Los `Boton` del archivo de Figma más la variante destructiva, con los pares exactos que se prueban por contraste. */
+enum class MaticaButtonVariant { PRIMARY, ACCENT, NEUTRAL, OUTLINE, TEXT, DESTRUCTIVE }
 
 object MaticaButtonPalette {
 
@@ -60,9 +60,13 @@ object MaticaButtonPalette {
             // Blue sobre Mist se queda en 4.36: bajo el umbral de texto normal. BlueDeep mantiene
             // el matiz azul y sube a 9.77.
             else MaticaColorPair(MaticaPalette.BlueDeep, MaticaPalette.Mist, "enlace sobre fondo de pantalla")
+        // confirmación de una acción que no se deshace: el rojo es el aviso, no un adorno.
+        MaticaButtonVariant.DESTRUCTIVE ->
+            if (dark) MaticaColorPair(MaticaPalette.Night, MaticaPalette.DangerLight, "confirmar borrado en oscuro")
+            else MaticaColorPair(MaticaPalette.Paper, MaticaPalette.Danger, "confirmar borrado")
     }
 
-    /** Pares que las pruebas de accesibilidad recorren: cinco variantes por tema. */
+    /** Pares que las pruebas de accesibilidad recorren: todas las variantes por tema. */
     fun measuredPairs(): List<MaticaColorPair> =
         listOf(false, true).flatMap { dark -> MaticaButtonVariant.entries.map { pairOf(it, dark) } }
 }
@@ -125,7 +129,13 @@ fun MaticaButton(
                 interactionSource = interaction,
                 indication = ripple(color = pair.foreground),
                 onClick = onClick,
-            ),
+            )
+            // El relleno pasa del rótulo al `Row`: dentro del Text sumaba `xl` (24 dp) por lado al
+            // propio `spacedBy` de la fila, así que el glifo de «Abrir mi ruta» quedaba separado del
+            // texto 8 dp pero pegado al borde del botón 24 dp, y un rótulo corto como «Abrir» medía
+            // ~83 dp de ancho a costa de la columna de texto de su propia fila. Acá el aire es parejo
+            // por los cuatro costados y la etiqueta no decide el ancho del botón.
+            .padding(horizontal = MaticaSpacing.lg, vertical = MaticaSpacing.md),
         horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.sm, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -138,7 +148,6 @@ fun MaticaButton(
             text = label,
             style = MaterialTheme.typography.labelLarge,
             color = pair.foreground,
-            modifier = Modifier.padding(horizontal = MaticaSpacing.xl, vertical = MaticaSpacing.md),
         )
     }
 }
