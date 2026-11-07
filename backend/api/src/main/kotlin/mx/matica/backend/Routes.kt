@@ -68,6 +68,7 @@ internal fun Application.maticaModule(services: MaticaServices) {
         groupRoutes(services)
         deviceRoutes(services)
         symbolicRoutes(services)
+        gamificationRoutes(services)
     }
 }
 
@@ -145,7 +146,21 @@ private fun Route.attemptRoutes(services: MaticaServices) {
             occurredAt = occurredAt,
         )
         when (withContext(Dispatchers.IO) { repository.insert(record) }) {
-            AttemptInsert.Created -> call.respond(HttpStatusCode.Created, AttemptAccepted(id.toString(), "created"))
+            AttemptInsert.Created -> {
+                services.gamification?.let { gamification ->
+                    withContext(Dispatchers.IO) {
+                        gamification.awardAttempt(
+                            userId = claims.userId,
+                            attemptId = id,
+                            verdict = record.verdict,
+                            usedHint = record.usedHint,
+                            occurredAt = record.occurredAt,
+                            timezone = call.request.headers["X-Timezone"],
+                        )
+                    }
+                }
+                call.respond(HttpStatusCode.Created, AttemptAccepted(id.toString(), "created"))
+            }
             AttemptInsert.Duplicate -> call.respond(HttpStatusCode.OK, AttemptAccepted(id.toString(), "duplicate"))
             AttemptInsert.OtherOwner ->
                 call.fail(HttpStatusCode.Conflict, "attempt_conflict", "Ese identificador ya pertenece a otro intento.")
@@ -286,6 +301,31 @@ private fun Route.symbolicRoutes(services: MaticaServices) {
                 call.respondText(result.body, ContentType.Application.Json, HttpStatusCode.fromValue(result.status))
             is ForwardResult.Unavailable ->
                 call.fail(HttpStatusCode.ServiceUnavailable, result.reason, "El cálculo simbólico no está disponible.")
+        }
+    }
+}
+
+private fun Route.gamificationRoutes(services: MaticaServices) {
+    get("/v1/gamification/summary") {
+        val claims = call.requireClaims(services) ?: return@get
+        if (!call.requireDatabase(services)) return@get
+        val gamification = services.gamification
+            ?: return@get call.fail(HttpStatusCode.ServiceUnavailable, "gamification_unavailable", "El servicio de gamificación no está disponible.")
+        val summary = withContext(Dispatchers.IO) { gamification.getSummary(claims.userId) }
+        call.respond(HttpStatusCode.OK, summary)
+    }
+
+    post("/v1/gamification/claim-freeze") {
+        val claims = call.requireClaims(services) ?: return@post
+        if (!call.requireDatabase(services)) return@post
+        val gamification = services.gamification
+            ?: return@post call.fail(HttpStatusCode.ServiceUnavailable, "gamification_unavailable", "El servicio de gamificación no está disponible.")
+        val outcome = withContext(Dispatchers.IO) { gamification.claimFreeze(claims.userId) }
+            ?: return@post call.fail(HttpStatusCode.NotFound, "user_not_found", "Usuario no encontrado.")
+        if (outcome.success) {
+            call.respond(HttpStatusCode.OK, outcome)
+        } else {
+            call.respond(HttpStatusCode.BadRequest, outcome)
         }
     }
 }

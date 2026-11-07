@@ -260,17 +260,141 @@ class ApiTest {
         assertFalse(PostgresProbe.ready(""))
     }
 
+    @Test
+    fun gamificationSummaryRequiresAuthentication() = testApplication {
+        application { maticaModule(fixture().services) }
+        assertEquals(HttpStatusCode.Unauthorized, client.get("/v1/gamification/summary").status)
+    }
+
+    @Test
+    fun claimFreezeRequiresAuthentication() = testApplication {
+        application { maticaModule(fixture().services) }
+        assertEquals(HttpStatusCode.Unauthorized, client.post("/v1/gamification/claim-freeze").status)
+    }
+
+    @Test
+    fun gamificationSummaryReturnsDefaultsForNewUser() = testApplication {
+        application { maticaModule(fixture().services) }
+        val token = client.register("ana@escuela.mx")
+        val response = client.get("/v1/gamification/summary") { header(HttpHeaders.Authorization, "Bearer $token") }
+        assertEquals(HttpStatusCode.OK, response.status)
+        val summary = response.bodyAsText().json()
+        assertEquals("0", summary["streak"]?.jsonPrimitive?.content)
+        assertEquals("0", summary["longestStreak"]?.jsonPrimitive?.content)
+        assertEquals("2", summary["freezeCredits"]?.jsonPrimitive?.content)
+        assertEquals("0", summary["totalXp"]?.jsonPrimitive?.content)
+        assertEquals("0", summary["weeklyXp"]?.jsonPrimitive?.content)
+        assertEquals("1", summary["level"]?.jsonPrimitive?.content)
+        assertNull(summary["lastActiveDate"]?.jsonPrimitive?.contentOrNull())
+    }
+
+    @Test
+    fun attemptsAwardXpAndAdvanceStreak() = testApplication {
+        application { maticaModule(fixture().services) }
+        val token = client.register("ana@escuela.mx")
+
+        val attempt1 = UUID.randomUUID().toString()
+        val res1 = client.post("/v1/attempts") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody(attemptJson(attempt1, verdict = "valid", usedHint = false, occurredAt = "2026-11-06T10:00:00Z"))
+        }
+        assertEquals(HttpStatusCode.Created, res1.status)
+
+        var summary = client.get("/v1/gamification/summary") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+        }.bodyAsText().json()
+        assertEquals("1", summary["streak"]?.jsonPrimitive?.content)
+        assertEquals("15", summary["totalXp"]?.jsonPrimitive?.content)
+        assertEquals("1", summary["level"]?.jsonPrimitive?.content)
+
+        val attempt2 = UUID.randomUUID().toString()
+        val res2 = client.post("/v1/attempts") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody(attemptJson(attempt2, verdict = "valid", usedHint = true, occurredAt = "2026-11-06T11:00:00Z"))
+        }
+        assertEquals(HttpStatusCode.Created, res2.status)
+
+        summary = client.get("/v1/gamification/summary") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+        }.bodyAsText().json()
+        assertEquals("1", summary["streak"]?.jsonPrimitive?.content)
+        assertEquals("25", summary["totalXp"]?.jsonPrimitive?.content)
+
+        val attempt3 = UUID.randomUUID().toString()
+        val res3 = client.post("/v1/attempts") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody(attemptJson(attempt3, verdict = "invalid", usedHint = false, occurredAt = "2026-11-06T11:30:00Z"))
+        }
+        assertEquals(HttpStatusCode.Created, res3.status)
+
+        summary = client.get("/v1/gamification/summary") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+        }.bodyAsText().json()
+        assertEquals("27", summary["totalXp"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun claimFreezeDeducts100XpAndAddsCreditOrFailsIfInsufficient() = testApplication {
+        application { maticaModule(fixture().services) }
+        val token = client.register("ana@escuela.mx")
+
+        val failRes = client.post("/v1/gamification/claim-freeze") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+        }
+        assertEquals(HttpStatusCode.BadRequest, failRes.status)
+        val failBody = failRes.bodyAsText().json()
+        assertEquals("false", failBody["success"]?.jsonPrimitive?.content)
+        assertEquals("2", failBody["freezeCredits"]?.jsonPrimitive?.content)
+        assertEquals("0", failBody["remainingXp"]?.jsonPrimitive?.content)
+
+        repeat(7) { i ->
+            val attemptId = UUID.randomUUID().toString()
+            client.post("/v1/attempts") {
+                header(HttpHeaders.Authorization, "Bearer $token")
+                contentType(ContentType.Application.Json)
+                setBody(attemptJson(attemptId, verdict = "valid", usedHint = false, occurredAt = "2026-11-06T10:0$i:00Z"))
+            }
+        }
+
+        var summary = client.get("/v1/gamification/summary") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+        }.bodyAsText().json()
+        assertEquals("105", summary["totalXp"]?.jsonPrimitive?.content)
+        assertEquals("2", summary["level"]?.jsonPrimitive?.content)
+
+        val successRes = client.post("/v1/gamification/claim-freeze") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+        }
+        assertEquals(HttpStatusCode.OK, successRes.status)
+        val successBody = successRes.bodyAsText().json()
+        assertEquals("true", successBody["success"]?.jsonPrimitive?.content)
+        assertEquals("3", successBody["freezeCredits"]?.jsonPrimitive?.content)
+        assertEquals("5", successBody["remainingXp"]?.jsonPrimitive?.content)
+
+        summary = client.get("/v1/gamification/summary") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+        }.bodyAsText().json()
+        assertEquals("3", summary["freezeCredits"]?.jsonPrimitive?.content)
+        assertEquals("5", summary["totalXp"]?.jsonPrimitive?.content)
+        assertEquals("1", summary["level"]?.jsonPrimitive?.content)
+    }
+
     private fun fixture(
         clock: Clock = Clock.fixed(fixedNow, ZoneOffset.UTC),
         config: BackendConfig = testConfig(),
         maxFailures: Int = 10,
     ): Fixture = Fixture(clock = clock, config = config.copy(loginMaxFailures = maxFailures))
 
-    private fun attemptJson(id: String, skill: String = "integer-operations", occurredAt: String = "2026-11-06T11:55:00Z"): String =
-        """
-        {"id":"$id","skillId":"$skill","exerciseId":"integer-add-1","before":"2+2","after":"4",
-         "verdict":"valid","usedHint":false,"occurredAt":"$occurredAt"}
-        """.trimIndent()
+    private fun attemptJson(
+        id: String,
+        skill: String = "integer-operations",
+        occurredAt: String = "2026-11-06T11:55:00Z",
+        verdict: String = "valid",
+        usedHint: Boolean = false,
+    ): String = """{"id":"$id","skillId":"$skill","exerciseId":"integer-add-1","before":"2+2","after":"4","verdict":"$verdict","usedHint":$usedHint,"occurredAt":"$occurredAt"}"""
 }
 
 private fun testConfig(
@@ -294,7 +418,8 @@ private class Fixture(
     val attempts = InMemoryAttempts()
     val groups = InMemoryGroups(users)
     val devices = InMemoryDevices()
-    val services = MaticaServices.forTests(config, users, attempts, groups, devices, clock = clock)
+    val gamification = InMemoryGamification(users)
+    val services = MaticaServices.forTests(config, users, attempts, groups, devices, gamification, clock = clock)
 }
 
 private suspend fun HttpClient.registerRaw(email: String, password: String) = post("/v1/auth/register") {
@@ -415,4 +540,114 @@ private class InMemoryDevices : DeviceTokenRepository {
     }
 
     override fun tokensFor(userId: UUID): List<String> = tokens[userId]?.toList().orEmpty()
+}
+
+private class InMemoryGamification(private val users: UserRepository) : GamificationRepository {
+    private val streaks = mutableMapOf<UUID, UserStreakRecord>()
+    private val experience = mutableMapOf<UUID, UserExperienceRecord>()
+
+    override fun getSummary(userId: UUID): GamificationSummaryDto {
+        val s = streaks[userId]
+        val e = experience[userId]
+        return GamificationSummaryDto(
+            streak = s?.currentStreak ?: 0,
+            longestStreak = s?.longestStreak ?: 0,
+            freezeCredits = s?.freezeCredits ?: GamificationRules.INITIAL_FREEZE_CREDITS,
+            totalXp = e?.totalXp ?: 0,
+            weeklyXp = e?.weeklyXp ?: 0,
+            level = e?.level ?: 1,
+            lastActiveDate = s?.lastActiveDate?.toString(),
+        )
+    }
+
+    override fun awardAttempt(
+        userId: UUID,
+        attemptId: UUID,
+        verdict: String,
+        usedHint: Boolean,
+        occurredAt: Instant,
+        timezone: String?,
+    ): GamificationReward {
+        val zoneId = GamificationRules.parseZone(timezone)
+        val today = occurredAt.atZone(zoneId).toLocalDate()
+
+        val current = streaks[userId]
+        val streakUpdate = GamificationRules.calculateStreak(
+            currentStreak = current?.currentStreak ?: 0,
+            longestStreak = current?.longestStreak ?: 0,
+            lastActiveDate = current?.lastActiveDate,
+            freezeCredits = current?.freezeCredits ?: GamificationRules.INITIAL_FREEZE_CREDITS,
+            today = today,
+        )
+
+        streaks[userId] = UserStreakRecord(
+            userId = userId,
+            currentStreak = streakUpdate.streak,
+            longestStreak = streakUpdate.longestStreak,
+            lastActiveDate = streakUpdate.lastActiveDate,
+            freezeCredits = streakUpdate.freezeCredits,
+        )
+
+        val currentExp = experience[userId]
+        val xpAwarded = GamificationRules.calculateXp(verdict, usedHint)
+        val newTotalXp = (currentExp?.totalXp ?: 0) + xpAwarded
+        val newWeeklyXp = (currentExp?.weeklyXp ?: 0) + xpAwarded
+        val newLevel = GamificationRules.calculateLevel(newTotalXp)
+
+        experience[userId] = UserExperienceRecord(
+            userId = userId,
+            totalXp = newTotalXp,
+            weeklyXp = newWeeklyXp,
+            level = newLevel,
+        )
+
+        return GamificationReward(
+            xpAwarded = xpAwarded,
+            streak = streakUpdate.streak,
+            freezeUsed = streakUpdate.freezeUsed,
+        )
+    }
+
+    override fun claimFreeze(userId: UUID): ClaimFreezeResponse? {
+        if (users.findById(userId) == null) return null
+
+        val currentExp = experience[userId]
+        val totalXp = currentExp?.totalXp ?: 0
+
+        val currentStreak = streaks[userId]
+        val freezeCredits = currentStreak?.freezeCredits ?: GamificationRules.INITIAL_FREEZE_CREDITS
+
+        if (totalXp < GamificationRules.FREEZE_COST_XP) {
+            return ClaimFreezeResponse(
+                success = false,
+                freezeCredits = freezeCredits,
+                remainingXp = totalXp,
+            )
+        }
+
+        val remainingXp = totalXp - GamificationRules.FREEZE_COST_XP
+        val newLevel = GamificationRules.calculateLevel(remainingXp)
+        val newFreeze = freezeCredits + 1
+
+        experience[userId] = UserExperienceRecord(
+            userId = userId,
+            totalXp = remainingXp,
+            weeklyXp = currentExp?.weeklyXp ?: 0,
+            level = newLevel,
+        )
+
+        streaks[userId] = UserStreakRecord(
+            userId = userId,
+            currentStreak = currentStreak?.currentStreak ?: 0,
+            longestStreak = currentStreak?.longestStreak ?: 0,
+            lastActiveDate = currentStreak?.lastActiveDate,
+            freezeCredits = newFreeze,
+        )
+
+        return ClaimFreezeResponse(
+            success = true,
+            freezeCredits = newFreeze,
+            remainingXp = remainingXp,
+        )
+    }
 }

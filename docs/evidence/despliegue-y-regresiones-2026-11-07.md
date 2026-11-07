@@ -77,44 +77,78 @@ consecuencias medidas hoy:
 - `MaticaAppUiTest.desdeHoySePuedeAbrirElPerfilLocal` fallaba porque el `performClick()` sobre
   «Mi perfil» se emitía en el vacío. La sonda temporal (`MaticaProfileProbeTest`, ya borrada) lo
   mostró: `SONDA_NODO bounds=Rect.fromLTRB(0.0, 0.0, 0.0, 0.0)` y `SONDA_RUTA=Home`. Corregido con
-  `performScrollTo()` antes del toque. **Ésta es la única medición instrumentada verde de hoy**:
-  `OK (1 test)`.
+  `performScrollTo()` antes del toque. Medido en el aparato: `OK (1 test)`. El mismo patrón —clic
+  sin desplazar— reapareció en la prueba de cierre de lección; ver «El emulador volvió» más abajo.
 - `MaticaLayoutMetricsTest` medía **0 dp** el hueco de la fila de lección y **−393 dp** el de las
   opciones del diagnóstico: el primer número era verdad y el segundo era el artefacto. Las dos
   pruebas ahora leen `positionInWindow` + `size`, que no se recortan, y desplazan una sola vez.
 
-## Bloqueado: el emulador
+## El emulador volvió: lo que se midió y lo que se rompió de verdad
 
-`emulator-5554` quedó `offline` y no volvió. La recuperación que sí se intentó: `adb kill-server` +
-`adb start-server`, `adb reconnect offline` y un lazo de 30 sondeos de 10 s. `sys.boot_completed`
-nunca respondió. El proceso `qemu-system-x86_64.exe` (PID 37144) sigue vivo con 32 MB de memoria
-real — es el `system_server` del AVD el que murió bajo la instrumentación sostenida, igual que el
-2026-11-06.
+Erick mató el proceso colgado y el AVD arrancó en frío. Con `emulator-5554` de nuevo, las cuatro
+hipótesis que quedaron abiertas se resolvieron con números, y dos de ellas eran defectos de
+producción, no de prueba.
 
-No se mató el proceso ni se reinició el AVD en frío: otra sesión está escribiendo en el mismo árbol
-de trabajo y podría estar instrumentándolo. **Mientras el aparato no vuelva, quedan sin medir en
-el teléfono los puntos 1 y 2 de las regresiones y las dos pruebas de layout reescritas.** Compilan y
-el APK de instrumentación se construyó; eso es todo lo que se puede afirmar hoy.
+**Regresión 1 — `MaticaNavigatorRestoreTest`.** La sonda volcó los nodos clickeables del mapa: los
+medallones reportaban `desc=null` y el nodo con la descripción no estaba en la lista de clickeables.
+Es decir, `RouteChip` tenía el nombre en un `Column` que no se podía pulsar y la acción en un
+`Surface` sin nombre: TalkBack anunciaba «botón, no escrito» y tocar el rótulo —la mitad baja del
+chip, la que más se ve— no hacía nada. No era el halo ni el grafo vacío. **Arreglado en producción**:
+el chip completo es ahora el botón y sobre él se fusionan rol y descripción
+([RouteMapView.kt:310](../../shared/presentation/src/commonMain/kotlin/mx/matica/presentation/math/RouteMapView.kt)).
+Medido después: `OK (1 test)` y `MaticaWindowInsetsTest OK (4 tests)` — ese test pulsaba el rótulo y
+sólo funcionaba porque el `mergeDescendants` heredaba el texto, no la acción.
 
-También queda sin diagnosticar, con la hipótesis anotada y sin verificar:
+**Regresión 2 — `MaticaAppUiTest.laRespuestaVerificadaEnPantallaCierraLaLeccion`.** La sonda dio el
+par exacto: antes de desplazar, «Verificar por sustitución» estaba en `y=1665` con
+`boundsInWindow=Rect(0,0,0,0)`; tras `performScrollTo()` el mismo nodo devolvió
+`Rect(88, 1511, 992, 1643)` y el toque cerró la lección (`¡EXCELENTE!` montado en `y=185`). El clic
+del test se inyectaba en las coordenadas de antes del auto-scroll que provoca `performTextInput`.
+**Arreglado en el test** con `performScrollTo()` antes del toque — la aserción no se movió.
 
-- `MaticaAppUiTest.laRespuestaVerificadaEnPantallaCierraLaLeccion`: el nodo «¡EXCELENTE!» existe pero
-  `assertIsDisplayed()` falla. `LessonCompleteScreen` es otra ruta
-  ([MaticaLessonScreens.kt:502](../../shared/presentation/src/commonMain/kotlin/mx/matica/presentation/app/MaticaLessonScreens.kt)),
-  así que lo más parecido es el mismo nodo bajo el pliegue; habría que confirmar con la sonda, no
-  suponerlo.
-- `MaticaNavigatorRestoreTest`: no encuentra el nodo de «Operaciones con enteros». **Hipótesis
-  descartada por lectura**: `buildRouteNodes` sigue poniendo `label = skill.labelEs`
-  ([RouteMapView.kt:119](../../shared/presentation/src/commonMain/kotlin/mx/matica/presentation/math/RouteMapView.kt))
-  y el `contentDescription` del chip se arma con esa etiqueta; el `enabled = node.unlocked` de la
-  línea 352 no bloquea el primer nudo, porque `integer-operations` no tiene prerrequisitos. Las dos
-  rutas que el test pulsa («Explorar la ruta sin diagnóstico», «Abrir mi ruta») también siguen en
-  producción. Queda en pie el candidato que sí requiere el aparato: el halo
-  (`rememberInfiniteTransition`) interfiriendo con `waitForIdle()`, o un grafo vacío que mande la
-  pantalla al estado `Empty` antes de dibujar chips.
-- El commit de las 10:00 (`0a867fc`, plan maestro de didáctica) añade rutas nuevas
-  (`error-spotting`, `word-problem`, `balance-lab`) y componentes nuevos; puede haber cambiado el
-  orden de la cabecera de «Mi ruta» por debajo de este test. No lo medí.
+**Descubierto de paso.** Con el trío de escritura fijado fuera del scroll, la tarjeta del veredicto
+se quedaba debajo del pliegue: el estudiante escribía la siguiente línea sin haber leído si la
+anterior sirvió. La tarjeta de respuesta corta (paso) vive ahora en la barra fija, encima del campo
+([MaticaLessonScreens.kt:189](../../shared/presentation/src/commonMain/kotlin/mx/matica/presentation/app/MaticaLessonScreens.kt));
+la de «Respuesta final» sigue dentro de su propia tarjeta. Medido: `elReproductorMuestraElVeredictoQueDioElMotor`
+pasó de «Required value was null» a verde y `MaticaLayoutMetricsTest OK (10 tests)`.
+
+**Inventario de destinos.** `MaticaRoute.all` pasó de 18 a 21 con el plan maestro de didáctica y la
+sonda no conocía `error-spotting`, `word-problem` ni `balance-lab`. Los tres textos nuevos se tomaron
+volcando el árbol de semántica en el aparato («Detecta el Error», «La tarifa del taxi», «Laboratorio
+Táctil»; 11, 9 y 15 textos respectivamente, todos por encima del mínimo de 4). Además el test ahora
+exige que las marcas cubran `MaticaRoute.all` como conjuntos, así que un destino nuevo sin marca no
+puede colarse otra vez. Medido: `OK (4 tests)`.
+
+## Bloqueo actual: dos sesiones en el mismo aparato
+
+A partir de aquí los resultados dejaron de ser reproducibles y la causa está medida, no supuesta:
+
+- El APK de instrumentación instalado en el teléfono pesaba **1 429 136 B** mientras el construido en
+  esta sesión pesa **1 413 777 B**. La otra sesión instala los suyos encima de los míos.
+- Con esa mezcla, la traza del fallo apuntaba a la línea 276 de una versión del test que ya no existe
+  en este árbol, y cuatro clases seguidas devolvieron `shortMsg=Process crashed`.
+
+Ninguna cifra de esta sección se puede volver a sacar mientras dos sesiones compartan
+`emulator-5554`. Lo comprobado en JVM con el árbol actual, sin aparato:
+`./gradlew jvmTest --rerun` → **523 pruebas, 0 fallos, 0 errores, 0 omitidas** (72 archivos de
+resultados).
+
+**Repetición parcial sobre `main` ya con la PR #15 fusionada** (`8ecaf28`), con la paridad de APK
+verificada en la misma orden (`local=1413777 instalado=1413777`):
+
+- `MaticaNavigatorRestoreTest` **OK (1)** y `MaticaWindowInsetsTest` **OK (4)** — el chip del mapa
+  sigue verde sobre el grafo nuevo.
+- `MaticaSemanticsTest` **3 con 1 fallo** y `MaticaLayoutMetricsTest` **10 con 1 fallo**, ambos por
+  encima del contenido de la PR #15, no por el cambio de esta sección: la cobertura curricular del
+  100% hace que la lección 99 del test de semántica ya no sea «la que no genera nadie», y la prueba
+  de la flecha «Regresa» mide un glifo que este árbol no ha tocado. `MaticaAppUiTest` cerró **13 con
+  1 fallo** señalando la línea 276 de una copia del test que no es la instalada, así que ése sigue
+  siendo el fallo no imputable al árbol. `MaticaScreenInventoryTest` devolvió
+  `shortMsg=Process crashed` sin veredicto.
+- Las dos correcciones que la sesión concurrente había vuelto a tirar siguen intactas tras la
+  fusión: `retryLabel = "Volver a la lista"` ([MaticaLessonScreens.kt:122](../../shared/presentation/src/commonMain/kotlin/mx/matica/presentation/app/MaticaLessonScreens.kt))
+  y el `MaticaConfirmDialog` de «Empezar de nuevo» (`:155`), ambas también presentes en `main`.
 
 ## Sin cambios respecto a ayer
 
