@@ -29,6 +29,10 @@ data class LearnerProfile(val progress: Map<SkillId, SkillProgress> = emptyMap()
 
     fun levelOf(skill: SkillId): MasteryLevel = progressOf(skill).level
 
+    /** Nivel de retención estimado según la curva del olvido de Ebbinghaus. */
+    fun retentionOf(skill: SkillId, day: LocalDate): Float =
+        ReviewRules.retentionOf(progressOf(skill).review, day)
+
     /**
      * "Dominada" significa competente o fluido. Una habilidad apenas iniciada no desbloquea la
      * siguiente: el grafo exige que el estudiante pueda operar sin pista antes de composiciones.

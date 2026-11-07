@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -639,6 +640,48 @@ fun HomeScreen(session: MaticaSession, navigator: MaticaNavigator) {
             leadingGlyph = MaticaIcon.ROUTE,
             fullWidth = true,
         )
+
+        // Gimnasio Metacognitivo: Detecta el Error (Brilliant / Khan Academy metacognition)
+        MaticaSection("Gimnasio metacognitivo") {
+            MaticaCard {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.md),
+                ) {
+                    MaticaGlyph(
+                        icon = MaticaIcon.WARNING,
+                        tint = MaterialTheme.colorScheme.tertiary,
+                        modifier = Modifier.size(24.dp),
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Detecta el Error",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        MaticaCaption("Evalúa soluciones ajenas paso a paso e identifica dónde falló el razonamiento.")
+                    }
+                }
+                Spacer(modifier = Modifier.height(MaticaSpacing.xs))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(MaticaSpacing.sm),
+                ) {
+                    MaticaButton(
+                        label = "Detecta el Error",
+                        onClick = { navigator.go(MaticaRoute.ErrorSpotting("err-sign-flip-01")) },
+                        variant = MaticaButtonVariant.OUTLINE,
+                        modifier = Modifier.weight(1f),
+                    )
+                    MaticaButton(
+                        label = "Balanza Táctil",
+                        onClick = { navigator.go(MaticaRoute.BalanceLab) },
+                        variant = MaticaButtonVariant.PRIMARY,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
         MaticaSection("Para hoy") {
             MaticaStateView(
                 state = when {

@@ -87,6 +87,7 @@ data class RouteNode(
     val suggested: Boolean,
     val row: Int,
     val column: Int,
+    val retention: Float = 1.0f,
 )
 
 /**
@@ -105,6 +106,7 @@ fun routeNodes(
     levels: (SkillId) -> MasteryLevel,
     mastered: Set<SkillId>,
     openable: (SkillId) -> Boolean = { true },
+    retention: (SkillId) -> Float = { 1.0f },
 ): List<RouteNode> {
     val ordered = graph.order()
     val isAvailable = { skill: SkillId -> graph.prerequisitesOf(skill).all { it in mastered } }
@@ -120,6 +122,7 @@ fun routeNodes(
             suggested = skill == suggested,
             row = row,
             column = if (row % 2 == 0) position else ROUTE_COLUMNS - 1 - position,
+            retention = retention(skill),
         )
     }
 }
@@ -302,6 +305,8 @@ private fun RouteChip(node: RouteNode, pair: MaticaColorPair, onClick: () -> Uni
         label = "route-press-scale",
     )
 
+    val isDecayed = node.retention < 0.6f && node.level != MasteryLevel.NOT_INTRODUCED && node.unlocked
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -312,6 +317,7 @@ private fun RouteChip(node: RouteNode, pair: MaticaColorPair, onClick: () -> Uni
                     append("${node.label}. ${node.level.labelEs}.")
                     if (!node.unlocked) append(" Bloqueada: faltan prerrequisitos.")
                     if (node.suggested) append(" Sugerida para continuar.")
+                    if (isDecayed) append(" Memoria en decaimiento: repaso sugerido.")
                 }
             },
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -345,7 +351,7 @@ private fun RouteChip(node: RouteNode, pair: MaticaColorPair, onClick: () -> Uni
                 },
                 enabled = node.unlocked,
                 shape = CircleShape,
-                color = pair.background,
+                color = if (isDecayed) pair.background.copy(alpha = 0.85f) else pair.background,
                 contentColor = pair.foreground,
                 interactionSource = interactionSource,
                 modifier = Modifier
@@ -356,17 +362,25 @@ private fun RouteChip(node: RouteNode, pair: MaticaColorPair, onClick: () -> Uni
                         alpha = if (node.unlocked) 1f else 0.55f
                     }
                     .border(
-                        width = if (node.suggested) 2.5.dp else 1.5.dp,
-                        color = if (node.suggested) MaterialTheme.colorScheme.primary else pair.foreground.copy(alpha = 0.3f),
+                        width = if (node.suggested || isDecayed) 2.5.dp else 1.5.dp,
+                        color = when {
+                            isDecayed -> MaterialTheme.colorScheme.error
+                            node.suggested -> MaterialTheme.colorScheme.primary
+                            else -> pair.foreground.copy(alpha = 0.3f)
+                        },
                         shape = CircleShape,
                     ),
             ) {
                 Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                     MaticaGlyph(
-                        icon = if (node.unlocked) levelGlyph(node.level) else MaticaIcon.LOCK,
-                        tint = pair.foreground,
+                        icon = when {
+                            !node.unlocked -> MaticaIcon.LOCK
+                            isDecayed -> MaticaIcon.REFRESH
+                            else -> levelGlyph(node.level)
+                        },
+                        tint = if (isDecayed) MaterialTheme.colorScheme.error else pair.foreground,
                         modifier = Modifier.size(22.dp),
-                        strokeWidthDp = if (node.suggested) 2.4f else 2f,
+                        strokeWidthDp = if (node.suggested || isDecayed) 2.4f else 2f,
                     )
                 }
             }

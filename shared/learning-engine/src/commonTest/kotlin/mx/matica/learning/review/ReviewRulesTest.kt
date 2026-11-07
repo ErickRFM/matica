@@ -94,4 +94,21 @@ class ReviewRulesTest {
         assertTrue(ReviewRules.atRisk(stage0, day("2026-11-05")))
         assertFalse(ReviewRules.atRisk(ReviewState(), day("2026-11-05")), "Nunca programado: no puede estar en riesgo.")
     }
+
+    @Test
+    fun curvaDelOlvidoDecaeConElTiempoSegunEbbinghaus() {
+        val state = ReviewState(stage = 1, completedOn = day("2026-11-01"))
+
+        // El mismo día la retención es máxima (1.0)
+        val sameDay = ReviewRules.retentionOf(state, day("2026-11-01"))
+        assertEquals(1.0f, sameDay, 0.001f)
+
+        // 3 días después la memoria está en decaimiento suave
+        val threeDays = ReviewRules.retentionOf(state, day("2026-11-04"))
+        assertTrue(threeDays in 0.45f..0.85f, "La retención tras 3 días debe ser intermedia: $threeDays")
+
+        // 15 días después sin repaso la retención es baja (< 0.6, vulnerable)
+        val longTime = ReviewRules.retentionOf(state, day("2026-11-16"))
+        assertTrue(longTime < 0.6f, "La retención tras 15 días debe ser vulnerable: $longTime")
+    }
 }

@@ -136,7 +136,7 @@ class StepAnalyzerTest {
         // Sumar numeradores y denominadores da exactamente lo que arrojaría leer de izquierda a
         // derecha: (1/3 + 1)/6 = 2/9, así que la firma detectada es de jerarquía.
         assertEquals(StepError.ORDER_OF_OPERATIONS, invalido("1/3 + 1/6", "2/9").error)
-        assertEquals(StepError.ARITHMETIC_ERROR, invalido("1/2 + 1/3", "2/5").error)
+        assertEquals(StepError.FRACTION_DENOMINATOR_ADDITION, invalido("1/2 + 1/3", "2/5").error)
     }
 
     @Test
@@ -250,5 +250,29 @@ class StepAnalyzerTest {
     fun expandirYAnularUnaIdentidadPolinomica() {
         assertEquals(RuleId.DISTRIBUTE, valido("x(x+1) = x^2+x", "0=0").rule)
         assertEquals(RuleId.DISTRIBUTE, valido("3(x-1) = 2x+4", "3x-3 = 2x+4").rule)
+    }
+    @Test
+    fun detectaOmisionDeCambioDeSignoAlTrasponer() {
+        val error1 = invalido("3x + 5 = 14", "3x = 19")
+        assertEquals(StepError.SIGN_FLIP_OMISSION, error1.error)
+        assertTrue(error1.socraticPrompt?.isNotBlank() == true, "Debe incluir pregunta socrática.")
+
+        val error2 = invalido("x - 4 = 10", "x = 6")
+        assertEquals(StepError.SIGN_FLIP_OMISSION, error2.error)
+    }
+
+    @Test
+    fun detectaErrorDeDivisorAditivo() {
+        val error = invalido("4x = 12", "x = 8")
+        assertEquals(StepError.ADDITIVE_DIVISOR_ERROR, error.error)
+        assertTrue(error.socraticPrompt?.isNotBlank() == true, "Debe incluir pregunta socrática.")
+        assertEquals(StepError.ADDITIVE_DIVISOR_ERROR, invalido("3x = 15", "x = 12").error)
+    }
+
+    @Test
+    fun detectaSumaErroneaDeDenominadoresConGuiaSocratica() {
+        val error = invalido("1/2 + 1/3", "2/5")
+        assertEquals(StepError.FRACTION_DENOMINATOR_ADDITION, error.error)
+        assertTrue(error.socraticPrompt?.isNotBlank() == true, "Debe incluir pregunta socrática.")
     }
 }

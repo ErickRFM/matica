@@ -334,6 +334,7 @@ class MaticaSession(
         levels = { skill -> profile.levelOf(skill) },
         mastered = profile.mastered(),
         openable = { skill -> templateOfSkill[skill] != null },
+        retention = { skill -> profile.retentionOf(skill, today) },
     )
 
     fun studyPlan(): StudyPlan = learning.plan(profile, today)
@@ -487,6 +488,10 @@ class MaticaSession(
         ExerciseTemplates.byId(plan.templateId)?.skill
 
     /** Recompensa derivada de la calidad de la evidencia, nunca del tiempo que se pasa en pantalla. */
+    fun awardMetacognitiveEvidence(skill: SkillId) {
+        award(EvidenceQuality.CORRECT_UNAIDED)
+    }
+
     private fun award(quality: EvidenceQuality) {
         val gained = when (quality) {
             EvidenceQuality.CORRECT_UNAIDED -> 12

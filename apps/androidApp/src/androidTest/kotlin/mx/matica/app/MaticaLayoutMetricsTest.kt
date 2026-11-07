@@ -353,20 +353,23 @@ class MaticaLayoutMetricsTest {
         rule.waitForIdle()
         val pregunta = (ses.currentDiagnosis() ?: ses.startDiagnosis()).pendingQuestions().first()
 
-        val cajas = pregunta.options.map { option ->
-            runCatching {
-                rule.onAllNodes(hasText(prettyMath(option)))[0]
-                    .fetchSemanticsNode().boundsInWindow
-            }.getOrNull()
-        }
-        val visibles = cajas.filterNotNull()
+        // Se desplaza una vez, hasta la última alternativa, y después se leen las cuatro con
+        // `positionInWindow`: `boundsInWindow` recorta contra el borde visible, y una opción que
+        // quedaba entera bajo el pliegue se recortaba a Rect(0,0,0,0), que restaba como -393 dp.
+        val interacciones = pregunta.options.map { option -> rule.onAllNodes(hasText(prettyMath(option)))[0] }
+        runCatching { interacciones.last().performScrollTo() }
+        rule.waitForIdle()
+        val nodos = interacciones.map { runCatching { it.fetchSemanticsNode() }.getOrNull() }
+        val visibles = nodos.filterNotNull()
         assertTrue(
             visibles.size == pregunta.options.size,
             "Sólo ${visibles.size} de ${pregunta.options.size} opciones están en pantalla: " +
                 "${pregunta.options}; una alternativa que no se puede medir es una alternativa que no se puede tocar.",
         )
         for (i in 1 until visibles.size) {
-            val hueco = dpDePx(visibles[i].top - visibles[i - 1].bottom)
+            val arriba = visibles[i].positionInWindow.y
+            val abajoAnterior = visibles[i - 1].positionInWindow.y + visibles[i - 1].size.height
+            val hueco = dpDePx(arriba - abajoAnterior)
             assertTrue(
                 hueco >= 12,
                 "Entre la opción $i y la ${i + 1} hay $hueco dp: con menos de 12 dp las cuatro " +
@@ -374,7 +377,8 @@ class MaticaLayoutMetricsTest {
             )
         }
         visibles.forEach {
-            assertTrue(dpDePx(it.height) >= 48, "Una opción mide ${dpDePx(it.height)} dp de alto; el target táctil es 48 dp.")
+            val alto = dpDePx(it.size.height.toFloat())
+            assertTrue(alto >= 48, "Una opción mide $alto dp de alto; el target táctil es 48 dp.")
         }
     }
 

@@ -11,6 +11,9 @@ enum class StepError(val id: String, val labelEs: String) {
     ONE_SIDED_OPERATION("one-sided-operation", "Se modificó un solo lado de la ecuación"),
     DISTRIBUTION_ERROR("distribution-error", "Error al distribuir el factor"),
     SIGN_ERROR("sign-error", "Error de signos al quitar paréntesis"),
+    SIGN_FLIP_OMISSION("sign-flip-omission", "Se omitió invertir el signo al trasponer el término"),
+    ADDITIVE_DIVISOR_ERROR("additive-divisor-error", "Se restó el coeficiente en lugar de dividir"),
+    FRACTION_DENOMINATOR_ADDITION("fraction-denominator-addition", "Se sumaron los denominadores de las fracciones"),
     ORDER_OF_OPERATIONS("order-of-operations", "Se violó la jerarquía de operaciones"),
     ARITHMETIC_ERROR("arithmetic-error", "Procedimiento correcto, cuenta incorrecta"),
     DIVISION_BY_ZERO("division-by-zero", "Se dividió entre cero"),
@@ -26,7 +29,12 @@ enum class StepError(val id: String, val labelEs: String) {
 sealed interface StepVerdict {
     data class Valid(val rule: RuleId, val skills: Set<SkillId>, val notes: List<String> = emptyList()) : StepVerdict
 
-    data class Invalid(val error: StepError, val detail: String, val repairHint: String) : StepVerdict
+    data class Invalid(
+        val error: StepError,
+        val detail: String,
+        val repairHint: String,
+        val socraticPrompt: String? = null,
+    ) : StepVerdict
 
     data class Indeterminate(val reason: String) : StepVerdict
 

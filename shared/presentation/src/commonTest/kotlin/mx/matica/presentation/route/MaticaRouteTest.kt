@@ -12,9 +12,9 @@ import kotlin.test.assertTrue
 class MaticaRouteTest {
 
     @Test
-    fun elInventarioTieneDieciochoDestinos() {
-        assertEquals(18, MaticaRoute.all.size)
-        assertEquals(18, MaticaRoute.all.map { it.path }.distinct().size, "Dos rutas comparten dirección.")
+    fun elInventarioTieneVeintiunDestinos() {
+        assertEquals(21, MaticaRoute.all.size)
+        assertEquals(21, MaticaRoute.all.map { it.path }.distinct().size, "Dos rutas comparten dirección.")
     }
 
     @Test

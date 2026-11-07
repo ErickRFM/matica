@@ -94,6 +94,17 @@ class StepAnalyzer {
                     error = StepError.ORDER_OF_OPERATIONS,
                     detail = "Calculaste '$beforeText' de izquierda a derecha y obtuviste ${student.value}.",
                     repairHint = "Primero potencias, luego multiplicaciones y divisiones, y al final sumas y restas.",
+                    socraticPrompt = "Según la jerarquía de operaciones, ¿qué operación tiene mayor precedencia y debe resolverse primero?",
+                )
+            }
+
+            val fractionSlip = MisapplicationPatterns.fractionDenominatorAdditionValue(before)
+            if (fractionSlip != null && student.value == fractionSlip) {
+                return StepVerdict.Invalid(
+                    error = StepError.FRACTION_DENOMINATOR_ADDITION,
+                    detail = "Sumaste los numeradores y los denominadores de '$beforeText', obteniendo ${student.value}.",
+                    repairHint = "Para sumar o restar fracciones se busca un común denominador; los denominadores no se suman directamente.",
+                    socraticPrompt = "Si las partes no tienen el mismo tamaño (denominador), ¿se pueden contar juntas directamente o hay que convertirlas primero?",
                 )
             }
 
@@ -101,6 +112,7 @@ class StepAnalyzer {
                 error = StepError.ARITHMETIC_ERROR,
                 detail = "El planteamiento coincide, pero el valor correcto de '$beforeText' es ${correct.value}, no ${student.value}.",
                 repairHint = "Rehaz la cuenta respetando la jerarquía de operaciones.",
+                socraticPrompt = "¿Revisaste el cálculo paso a paso? ¿Cuál es el resultado de resolver cada operación en su orden correspondiente?",
             )
         }
 
@@ -150,6 +162,7 @@ class StepAnalyzer {
                     error = StepError.DISTRIBUTION_ERROR,
                     detail = "En el $side multiplicaste el factor solo por el primer término.",
                     repairHint = "El número que multiplica el paréntesis afecta a todos los términos: 2(x+3) es 2x+6, no 2x+3.",
+                    socraticPrompt = "¿El factor que multiplica al paréntesis afecta solo a la primera parte o a cada término de adentro?",
                 )
             }
 
@@ -158,6 +171,7 @@ class StepAnalyzer {
                     error = StepError.SIGN_ERROR,
                     detail = "Al quitar el signo negativo del $side cambiaste solo el primer término.",
                     repairHint = "El signo negativo afecta a todos los términos dentro del paréntesis.",
+                    socraticPrompt = "¿Cómo cambia el signo de cada término que estaba dentro del paréntesis al quitar el signo menos?",
                 )
             }
         }
@@ -199,9 +213,39 @@ class StepAnalyzer {
             )
         }
 
+        val nonConstBefore = canonicalBefore.nonConstantTerms()
+        val nonConstAfter = canonicalAfter.nonConstantTerms()
+        if (nonConstBefore.size == 1 && nonConstAfter.size == 1 && canonicalBefore.degree == 1 && canonicalAfter.degree == 1) {
+            val (monomialBefore, coeffA) = nonConstBefore.first()
+            val (monomialAfter, coeffAfter) = nonConstAfter.first()
+            if (monomialBefore == monomialAfter && coeffAfter == Rational.ONE && coeffA != Rational.ONE && !coeffA.isZero) {
+                val rightConstBefore = -canonicalBefore.constantTerm
+                val rightConstAfter = -canonicalAfter.constantTerm
+                if (rightConstAfter == rightConstBefore - coeffA) {
+                    return StepVerdict.Invalid(
+                        error = StepError.ADDITIVE_DIVISOR_ERROR,
+                        detail = "En '$afterText' restaste el coeficiente $coeffA en lugar de dividir entre él.",
+                        repairHint = "En '$beforeText', el $coeffA está multiplicando a la incógnita; para despejarla debes dividir ambos lados entre $coeffA.",
+                        socraticPrompt = "En ${coeffA}${monomialBefore.key}, ¿qué operación une al $coeffA con la incógnita? ¿Cuál es la operación inversa de multiplicar?",
+                    )
+                }
+            }
+        }
+
         val leftDelta = sideDelta(before.left, after.left)
         val rightDelta = sideDelta(before.right, after.right)
         if (leftDelta != null && rightDelta != null && leftDelta != rightDelta) {
+            if (leftDelta == -rightDelta && !leftDelta.isZero) {
+                val term = leftDelta.sortedTerms.singleOrNull()
+                val termStr = term?.let { (mono, coeff) -> if (mono.isConstant) coeff.abs.toString() else "${coeff.abs}${mono.key}" } ?: "el término"
+                return StepVerdict.Invalid(
+                    error = StepError.SIGN_FLIP_OMISSION,
+                    detail = "Al mover $termStr al otro lado omitiste cambiar su signo: mantuviste la misma operación en lugar de invertirla.",
+                    repairHint = "Al trasponer un término al otro lado del signo igual, debes aplicar la operación inversa para mantener el equilibrio.",
+                    socraticPrompt = "¿Cuál es la operación inversa necesaria para cancelar $termStr del lado original? Si lo quitas de un lado, ¿cómo debe entrar al otro?",
+                )
+            }
+
             val description = when {
                 leftDelta.isZero -> "dejaste el lado izquierdo igual y modificaste solo el derecho"
                 rightDelta.isZero -> "modificaste solo el lado izquierdo y dejaste el derecho intacto"
@@ -211,6 +255,11 @@ class StepAnalyzer {
                 error = if (leftDelta.isZero || rightDelta.isZero) StepError.ONE_SIDED_OPERATION else StepError.NOT_BALANCED_OPERATION,
                 detail = "En '$afterText' $description.",
                 repairHint = "La ecuación se mantiene equilibrada solo si la misma operación se aplica a los dos lados.",
+                socraticPrompt = if (leftDelta.isZero || rightDelta.isZero) {
+                    "Si solo modificas un plato de la balanza, ¿qué le ocurre al equilibrio de la ecuación?"
+                } else {
+                    "Para que la balanza continúe nivelada, ¿cómo deben ser las operaciones que apliques en ambos platos?"
+                },
             )
         }
 
