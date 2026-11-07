@@ -78,6 +78,34 @@ internal object MisapplicationPatterns {
         return accumulator
     }
 
+    /**
+     * Detecta el error canónico de sumar numeradores con numeradores y denominadores con
+     * denominadores: 1/2 + 1/3 -> (1+1)/(2+3) = 2/5.
+     */
+    fun fractionDenominatorAdditionValue(expression: Expr): Rational? {
+        val sum = expression as? Expr.Sum ?: return null
+        if (sum.terms.size < 2) return null
+        var numSum = 0L
+        var denSum = 0L
+        for (term in sum.terms) {
+            val quotient = term.operand as? Expr.Quotient ?: return null
+            val numConst = quotient.numerator as? Expr.Const ?: return null
+            val denConst = quotient.denominator as? Expr.Const ?: return null
+            val num = numConst.value.toLongOrNull() ?: return null
+            val den = denConst.value.toLongOrNull() ?: return null
+            if (den == 0L) return null
+            val signedNum = if (term.operator == Expr.Sum.Term.Operator.MINUS) -num else num
+            numSum += signedNum
+            denSum += den
+        }
+        if (denSum == 0L) return null
+        return try {
+            Rational.of(numSum, denSum)
+        } catch (_: IllegalArgumentException) {
+            null
+        }
+    }
+
     /** Cadena enteramente numérica: se usa para comparar el valor correcto contra el mal ordenado. */
     fun isPurelyNumeric(expression: Expr): Boolean = expression.variables().isEmpty()
 

@@ -45,6 +45,12 @@ sealed class MaticaRoute(val path: String) {
     data class Practice(val templateId: String, val seed: Long) :
         MaticaRoute("practice/$templateId/$seed")
 
+    data class ErrorSpotting(val exerciseId: String) : MaticaRoute("error-spotting/$exerciseId")
+
+    data class WordProblem(val problemId: String) : MaticaRoute("word-problem/$problemId")
+
+    data object BalanceLab : MaticaRoute("balance-lab")
+
     data object ReviewQueue : MaticaRoute("review")
 
     data object Rewards : MaticaRoute("rewards")
@@ -75,6 +81,9 @@ sealed class MaticaRoute(val path: String) {
                 LessonComplete(SkillId.BALANCE_PRINCIPLE, 1),
                 AttemptReview(SkillId.BALANCE_PRINCIPLE, 1, 1),
                 Practice("two-step-linear", 1L),
+                ErrorSpotting("err-sign-flip-01"),
+                WordProblem("wp-taxi-01"),
+                BalanceLab,
                 ReviewQueue, Rewards, Profile, Settings, Classroom,
             )
         }
@@ -130,6 +139,10 @@ sealed class MaticaRoute(val path: String) {
                 } else {
                     null
                 }
+
+                "error-spotting" -> if (parts.size == 2) ErrorSpotting(parts[1]) else null
+                "word-problem" -> if (parts.size == 2) WordProblem(parts[1]) else null
+                "balance-lab" -> take(parts, 1) { BalanceLab }
 
                 "lesson" -> skillAt(1)?.let { skill ->
                     val lesson = parts.getOrNull(2)?.toIntOrNull() ?: return@let null

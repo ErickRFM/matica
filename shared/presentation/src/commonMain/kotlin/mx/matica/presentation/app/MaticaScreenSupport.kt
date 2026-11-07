@@ -96,6 +96,11 @@ fun errorSkillsOf(verdict: StepVerdict): Set<StepError> = when (verdict) {
     else -> emptySet()
 }
 
+/**
+ * Pregunta socrática orientadora cuando el paso es inválido y tiene una guía pedagógica disponible.
+ */
+fun socraticPromptOf(verdict: StepVerdict): String? = (verdict as? StepVerdict.Invalid)?.socraticPrompt
+
 fun answerMessage(outcome: VerificationOutcome, proposal: Rational): Pair<String, String> = when (outcome) {
     is VerificationOutcome.Satisfies ->
         "$proposal sí resuelve la ecuación" to "Sustituido, los dos lados quedan iguales."

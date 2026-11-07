@@ -2,6 +2,7 @@ package mx.matica.presentation.app
 
 import androidx.compose.foundation.layout.Arrangement
 import mx.matica.presentation.components.MaticaConfetti
+import mx.matica.presentation.components.MaticaConfirmDialog
 import androidx.compose.runtime.LaunchedEffect
 import mx.matica.design.feedback.rememberMaticaFeedback
 import mx.matica.design.brand.MascotEmotion
@@ -43,6 +44,7 @@ import mx.matica.presentation.components.MaticaIconButton
 import mx.matica.presentation.components.MaticaSection
 import mx.matica.presentation.components.StepChoiceCard
 import mx.matica.presentation.components.StepOption
+import mx.matica.presentation.components.WorkedExampleCard
 import mx.matica.presentation.exercise.buildStepOptions
 import mx.matica.presentation.exercise.ExerciseRenderPlan
 import mx.matica.presentation.exercise.ExerciseSlot
@@ -117,6 +119,7 @@ fun LessonPlayerScreen(skill: SkillId, lessonNumber: Int, session: MaticaSession
                 state = MaticaViewState.Empty(
                     "Esta lección no se pudo generar",
                     session.message ?: "El generador devolvió otro ejercicio o ninguno.",
+                    retryLabel = "Volver a la lista",
                 ),
                 onRetry = { navigator.goBack() },
             ) { }
@@ -132,6 +135,7 @@ fun LessonPlayerScreen(skill: SkillId, lessonNumber: Int, session: MaticaSession
     // El campo lleva el motivo corto y la tarjeta el veredicto entero; con el mismo texto en los dos
     // la frase quedaba pegada debajo de sí misma (lo midió `elRechazoDelMotorSePintaUnaSolaVez…`).
     var rejection by remember { mutableStateOf<String?>(null) }
+    var confirmarBorrado by remember { mutableStateOf(false) }
     var selectedOptionIndex by rememberSaveable(plan, workspace) { mutableStateOf<Int?>(null) }
     var optionEvaluatedCorrect by remember { mutableStateOf<Boolean?>(null) }
     val stepOptions = remember(plan, workspace) {
@@ -147,7 +151,29 @@ fun LessonPlayerScreen(skill: SkillId, lessonNumber: Int, session: MaticaSession
         subtitle = plan.labelEs,
         session = session,
         onBack = { navigator.goBack() },
+        overlay = {
+            if (confirmarBorrado) {
+                MaticaConfirmDialog(
+                    title = "¿Empezar de nuevo?",
+                    detail = "Se borra la línea que llevas escrita en la pizarra. Los intentos que el motor ya revisó se conservan.",
+                    confirmLabel = "Sí, borrar la pizarra",
+                    dismissLabel = "Conservar",
+                    onConfirm = {
+                        workspace = plan.equationText
+                        draft = ""
+                        feedback = null
+                        rejection = null
+                        selectedOptionIndex = null
+                        optionEvaluatedCorrect = null
+                        confirmarBorrado = false
+                    },
+                    onDismissRequest = { confirmarBorrado = false },
+                )
+            }
+        },
     ) {
+        WorkedExampleCard(skill = skill, initiallyExpanded = lessonNumber == 1)
+
         MaticaCard {
             MaticaCaption("Lo que vas resolviendo")
             EquationView(text = workspace, variable = plan.variable)
@@ -306,14 +332,7 @@ fun LessonPlayerScreen(skill: SkillId, lessonNumber: Int, session: MaticaSession
                 }
                 MaticaButton(
                     label = "Empezar de nuevo",
-                    onClick = {
-                        workspace = plan.equationText
-                        draft = ""
-                        feedback = null
-                        rejection = null
-                        selectedOptionIndex = null
-                        optionEvaluatedCorrect = null
-                    },
+                    onClick = { confirmarBorrado = true },
                     variant = MaticaButtonVariant.TEXT,
                     fullWidth = true,
                 )

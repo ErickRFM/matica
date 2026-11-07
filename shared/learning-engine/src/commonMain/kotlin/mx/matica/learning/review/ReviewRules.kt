@@ -85,6 +85,26 @@ object ReviewRules {
         if (state.scheduledOn == null) return false
         return state.daysOverdue(day) > ReviewLadder.intervalOf(state.stage)
     }
+
+    /**
+     * Nivel de retención de memoria estimado R = exp(-t / S) según la curva del olvido de Ebbinghaus.
+     * Donde t es el número de días transcurridos desde el último repaso y S es la estabilidad de memoria
+     * proporcional a la etapa alcanzada en la escalonera de repaso espaciado.
+     *
+     * Retorna un valor en [0.1f, 1.0f]:
+     * - 0.8f .. 1.0f: Memoria fresca / dominio intacto.
+     * - 0.6f .. 0.8f: Memoria en enfriamiento.
+     * - < 0.6f: Habilidad vulnerable / agrietada (requiere repaso para no olvidar).
+     */
+    fun retentionOf(state: ReviewState, today: LocalDate): Float {
+        val lastDay = state.completedOn ?: return 1.0f
+        val daysElapsed = daysBetween(lastDay, today).toFloat()
+        if (daysElapsed <= 0f) return 1.0f
+
+        val stability = (ReviewLadder.intervalOf(state.stage) * 1.5f).coerceAtLeast(2.0f)
+        val retention = kotlin.math.exp(-daysElapsed / stability)
+        return retention.coerceIn(0.1f, 1.0f)
+    }
 }
 
 internal fun daysBetween(from: LocalDate, to: LocalDate): Long {
